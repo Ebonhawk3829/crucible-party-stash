@@ -284,6 +284,11 @@ function _activateStashActionListeners(stashTab, groupActor) {
 
   // Drag items OUT of the stash
   stashTab.addEventListener("dragstart", (ev) => {
+    // Don't let control buttons (give/remove) trigger a drag
+    if (ev.target.closest("[data-stash-action]")) {
+      ev.preventDefault();
+      return;
+    }
     const li = ev.target.closest(".stash-item[data-index]");
     if (!li) return;
     const index = Number(li.dataset.index);

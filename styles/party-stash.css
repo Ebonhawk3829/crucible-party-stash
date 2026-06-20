@@ -161,6 +161,7 @@
 }
 
 .crucible.actor-group .stash-list .stash-item .controls .control {
+  -webkit-user-drag: none;
   cursor: pointer;
   opacity: 0.5;
   padding: 0.2rem 0.3rem;
