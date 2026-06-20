@@ -81,14 +81,21 @@
 .crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .members {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  overflow: visible;       
   margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
 }
 
 .crucible.actor-group .party-stash-panel[data-stash-tab="members"] .members > .items-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+}
+
+.crucible.actor-group .party-stash-panel[data-stash-tab="members"] .members > h3 {
+  flex-shrink: 0;
+  margin-top: -0.75rem;   /* this now escapes into the parent panel, not clipped */
 }
 /* ─── Empty Stash ─── */
 
