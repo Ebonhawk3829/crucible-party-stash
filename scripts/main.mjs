@@ -232,6 +232,13 @@ function _activateStashDropListeners(stashTab, groupActor) {
  * intercept and swallow clicks on data-action elements. */
 
 function _activateStashActionListeners(stashTab, groupActor) {
+  // Prevent draggable parent <li> from eating clicks on control buttons
+  stashTab.addEventListener("mousedown", (ev) => {
+    if (ev.target.closest("[data-stash-action]")) {
+      ev.stopPropagation();
+    }
+  });
+
   stashTab.addEventListener("click", async (ev) => {
     const el = ev.target.closest("[data-stash-action]");
     if (!el) return;

@@ -158,6 +158,8 @@
   display: flex;
   gap: 0.25rem;
   flex: 0 0 auto;
+  -webkit-user-drag: none;
+  user-drag: none;
 }
 
 .crucible.actor-group .stash-list .stash-item .controls .control {
