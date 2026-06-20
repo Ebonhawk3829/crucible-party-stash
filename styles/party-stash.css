@@ -82,7 +82,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  margin-top: 1.5rem;
+  padding-top: 1.5rem;
 }
 
 /* ─── Empty Stash ─── */
