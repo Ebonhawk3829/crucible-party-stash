@@ -12,9 +12,22 @@ A module for [Foundry VTT](https://foundryvtt.com/)'s **Crucible** system (V14+)
 
 ## Installation
 
-1. Copy this folder to `{userData}/Data/modules/crucible-party-stash/`
-2. Enable the module in your Foundry world: **Manage Modules** → **Crucible Party Stash**
-3. Open any Group actor sheet — you'll see a "Shared Stash" tab alongside the "Members" tab.
+### Option 1: Install via Manifest URL (Recommended)
+1. In Foundry VTT, navigate to **Add-on Modules** → **Install Module**
+2. Paste the following URL into the **Manifest URL** field:
+   ```
+   https://raw.githubusercontent.com/Ebonhawk3829/crucible-party-stash/main/module.json
+   ```
+3. Click **Install**
+4. Enable the module in your world: **Manage Modules** → **Crucible Party Stash**
+
+### Option 2: Manual Install
+1. Download the [latest release ZIP](https://github.com/Ebonhawk3829/crucible-party-stash/archive/refs/heads/main.zip)
+2. Extract to `{userData}/Data/modules/crucible-party-stash/`
+3. Enable the module in your Foundry world
+
+### Post-Install
+Open any Group actor sheet — you'll see a "Shared Stash" tab alongside the "Members" tab.
 
 ## Usage
 

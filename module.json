@@ -22,5 +22,10 @@
     "lang": "en",
     "name": "English",
     "path": "lang/en.json"
-  }]
+  }],
+  "url": "https://github.com/Ebonhawk3829/crucible-party-stash",
+  "manifest": "https://raw.githubusercontent.com/Ebonhawk3829/crucible-party-stash/main/module.json",
+  "download": "https://github.com/Ebonhawk3829/crucible-party-stash/archive/refs/heads/main.zip",
+  "bugs": "https://github.com/Ebonhawk3829/crucible-party-stash/issues",
+  "readme": "https://github.com/Ebonhawk3829/crucible-party-stash/blob/main/README.md"
 }
