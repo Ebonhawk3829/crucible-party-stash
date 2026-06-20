@@ -171,36 +171,45 @@ Hooks.once("preloadTemplates", async () => {
 });
 
 /* ─── Core Injection Logic ───
- * Called by: hooks (if they fire) OR MutationObserver (ultimate fallback). */
+ * Called by: hooks (when sheet renders/re-renders). Uses a flag on the
+ * app instance (not DOM) to track injection state across re-renders. */
 
 function _onGroupSheetRender(app, element) {
-  console.log(`${MODULE_ID} | _onGroupSheetRender called`, app.constructor?.name);
+  // Deduplicate: track render cycle counter so multiple hooks per cycle
+  // only result in one injection
+  app._stashRenderCount = (app._stashRenderCount || 0) + 1;
+  const cycle = app._stashRenderCount;
+  if (app._stashLastRender === cycle) return; // already done this cycle
+  app._stashLastRender = cycle;
+
+  console.log(`${MODULE_ID} | _onGroupSheetRender #${cycle} called`, app.constructor?.name);
 
   const actor = app.actor;
   if (!actor || actor.type !== "group") return;
 
-  if (element.querySelector(".party-stash-tabs")) return;
-
   const isEditable = app.isEditable;
   const stashItems = _getStash(actor);
+  const activeTab = app._stashActiveTab || "members";
 
   // V2 sheet: rendered parts are in [data-application-part] elements.
-  // Target the first part container, or window-content, or element itself.
   const contentArea =
     element.querySelector("[data-application-part]") ||
     element.querySelector(".window-content") ||
     element;
   console.log(`${MODULE_ID} | Content:`, contentArea.tagName);
 
-  // Tab bar
+  // Tab bar — inline critical styles since sheet re-renders strip our CSS class
   const tabBar = document.createElement("nav");
   tabBar.className = "party-stash-tabs sheet-tabs";
+  tabBar.style.cssText = "display:flex; gap:0.5rem; border-bottom:1px solid var(--color-border-dark,#444); padding:0 0.5rem; margin-bottom:0.5rem; width:100%; box-sizing:border-box;";
   tabBar.setAttribute("aria-label", "Party Stash Tabs");
   tabBar.innerHTML = `
-    <a class="tab-item active" data-tab="members" data-group="stash-tabs" role="tab" aria-selected="true">
+    <a class="tab-item ${activeTab === "members" ? "active" : ""}" data-tab="members" data-group="stash-tabs" role="tab" aria-selected="${activeTab === "members"}"
+       style="padding:0.4rem 0.8rem; cursor:pointer; opacity:${activeTab === "members" ? "1" : "0.6"}; border-bottom:2px solid ${activeTab === "members" ? "var(--color-warm-2,#c33)" : "transparent"}; text-decoration:none; color:inherit; white-space:nowrap; user-select:none; transition:opacity 0.2s, border-color 0.2s;">
       <i class="fa-solid fa-users"></i> ${game.i18n.localize("CRUCIBLE_PARTY_STASH.TabMembers")}
     </a>
-    <a class="tab-item" data-tab="stash" data-group="stash-tabs" role="tab" aria-selected="false">
+    <a class="tab-item ${activeTab === "stash" ? "active" : ""}" data-tab="stash" data-group="stash-tabs" role="tab" aria-selected="${activeTab === "stash"}"
+       style="padding:0.4rem 0.8rem; cursor:pointer; opacity:${activeTab === "stash" ? "1" : "0.6"}; border-bottom:2px solid ${activeTab === "stash" ? "var(--color-warm-2,#c33)" : "transparent"}; text-decoration:none; color:inherit; white-space:nowrap; user-select:none; transition:opacity 0.2s, border-color 0.2s;">
       <i class="fa-solid fa-box-open"></i> ${game.i18n.localize("CRUCIBLE_PARTY_STASH.TabStash")}
     </a>
   `;
@@ -211,15 +220,15 @@ function _onGroupSheetRender(app, element) {
 
   // Members tab
   const membersTab = document.createElement("div");
-  membersTab.className = "tab-content active";
+  membersTab.className = "tab-content" + (activeTab === "members" ? " active" : "");
   membersTab.dataset.tab = "members";
   membersTab.dataset.group = "stash-tabs";
   membersTab.innerHTML = existingHTML;
   contentArea.appendChild(membersTab);
 
-  // Stash tab (async)
+  // Stash tab
   const stashTab = document.createElement("div");
-  stashTab.className = "tab-content";
+  stashTab.className = "tab-content" + (activeTab === "stash" ? " active" : "");
   stashTab.dataset.tab = "stash";
   stashTab.dataset.group = "stash-tabs";
   _renderStashTab(stashTab, stashItems, isEditable).then(() => {
@@ -227,16 +236,22 @@ function _onGroupSheetRender(app, element) {
     console.log(`${MODULE_ID} | Stash tab appended`);
   });
 
-  // Tab switching
+  // Tab switching — remembers active tab across re-renders
   tabBar.addEventListener("click", (ev) => {
     const link = ev.target.closest(".tab-item");
     if (!link) return;
     ev.preventDefault();
     const t = link.dataset.tab;
     if (!t) return;
+    app._stashActiveTab = t; // persist for re-render
     tabBar.querySelectorAll(".tab-item").forEach(l => {
-      l.classList.toggle("active", l.dataset.tab === t);
-      l.setAttribute("aria-selected", String(l.dataset.tab === t));
+      const sel = l.dataset.tab === t;
+      l.classList.toggle("active", sel);
+      l.setAttribute("aria-selected", String(sel));
+      l.style.opacity = sel ? "1" : "0.6";
+      l.style.borderBottomColor = sel ? "var(--color-warm-2,#c33)" : "transparent";
+      l.style.borderBottomWidth = "2px";
+      l.style.borderBottomStyle = "solid";
     });
     contentArea.querySelectorAll(".tab-content").forEach(c => {
       c.classList.toggle("active", c.dataset.tab === t);
@@ -246,7 +261,8 @@ function _onGroupSheetRender(app, element) {
   _activateStashDropListeners(stashTab, actor);
   _activateStashActionListeners(stashTab, actor);
 
-  console.log(`${MODULE_ID} | Tab injection done`);
+  app._stashInjected = true;
+  console.log(`${MODULE_ID} | Tab injection done, active tab: ${activeTab}`);
 }
 
 async function _renderStashTab(container, items, isEditable) {
@@ -278,9 +294,15 @@ Hooks.on("renderCrucibleGroupActorSheet", (app, element) => {
 });
 
 Hooks.on("renderActorSheetV2", (app, element) => {
-  if (!app.actor || app.actor.type !== "group") return;
-  console.log(`${MODULE_ID} | HOOK: renderActorSheetV2 (group)`);
-  _onGroupSheetRender(app, element);
+  // Group sheet injection
+  if (app.actor?.type === "group") {
+    console.log(`${MODULE_ID} | HOOK: renderActorSheetV2 (group)`);
+    _onGroupSheetRender(app, element);
+  }
+  // Hero sheet drop interception (non-group)
+  if (app.actor?.type === "hero" || app.actor?.type === "adversary") {
+    _setupHeroDropInterception(app, element);
+  }
 });
 
 Hooks.on("renderActorSheet", (app, element) => {
@@ -294,20 +316,17 @@ Hooks.on("renderApplication", (app, element) => {
   if (!app.actor || app.actor.type !== "group") return;
   const n = app.constructor?.name || "";
   if (!n.includes("Group") && !n.includes("Crucible")) return;
-  if (element.querySelector(".party-stash-tabs")) return;
+  if (app._stashInjected) return;
   console.log(`${MODULE_ID} | HOOK: renderApplication (${n})`);
   _onGroupSheetRender(app, element);
 });
 
-/* ─── Strategy 2: Prototype patching (most reliable) ───
- * Patch the group sheet class _onRender after it's been registered. */
+/* ─── Strategy 2: Prototype patching (reliable) ─── */
 
 function _patchSheetClass() {
-  const sheetClass = CONFIG.Actor.sheetClasses?.group?.["crucible"]?.cls
-    || CONFIG.Actor.sheetClasses?.group?.find?.(s => s.cls)?.cls;
+  const sheetClass = CONFIG.Actor.sheetClasses?.group?.["crucible"]?.cls;
   if (!sheetClass) {
-    console.log(`${MODULE_ID} | Sheet class not yet available, retrying...`);
-    setTimeout(_patchSheetClass, 1000);
+    console.log(`${MODULE_ID} | Sheet class not available, skipping patch`);
     return;
   }
 
@@ -316,14 +335,12 @@ function _patchSheetClass() {
 
   const original = sheetClass.prototype._onRender;
   sheetClass.prototype._onRender = function(context, options) {
-    console.log(`${MODULE_ID} | PATCHED _onRender for ${name}`);
-    // Call original first
+    // Call original first to render the V2 parts
     const result = original?.call(this, context, options);
-    // Now inject — use the rendered element
+    // Inject our tab system into the freshly rendered DOM
     _onGroupSheetRender(this, this.element);
     return result;
   };
-  console.log(`${MODULE_ID} | Sheet class patched`);
 }
 
 /* ─── Strategy 3: MutationObserver (ultimate fallback) ─── */
@@ -340,10 +357,7 @@ function _setupMutationObserver() {
       // Try to find the app instance from ui.windows
       const appId = sheetEl.id?.replace("application-", "");
       const app = appId ? ui.windows?.[appId] : null;
-      if (!app) {
-        console.log(`${MODULE_ID} | MO: found sheet but no app instance`);
-        return;
-      }
+      if (!app) return; // can't inject without app instance — hooks/patching cover this
       console.log(`${MODULE_ID} | MO: detected group sheet`);
       _onGroupSheetRender(app, sheetEl);
     });
@@ -421,6 +435,7 @@ function _activateStashActionListeners(stashTab, groupActor) {
     const el = ev.target.closest("[data-action]");
     if (!el) return;
     ev.preventDefault();
+    ev.stopPropagation();
     const action = el.dataset.action;
     const index = Number(el.dataset.index);
     let stash = _getStash(groupActor);
@@ -499,10 +514,13 @@ Hooks.on("dropActorSheetData", async (targetActor, sheet, data) => {
   ui.notifications.info(`${itemData.name} moved to ${targetActor.name}.`);
 });
 
-/* ─── Return: V2 hero sheet drop ─── */
+/* ─── Return: V2 hero sheet drop interception ─── */
 
-Hooks.on("renderActorSheetV2", (app, element) => {
-  if (!(app.actor?.type === "hero" || app.actor?.type === "adversary")) return;
+function _setupHeroDropInterception(app, element) {
+  // Avoid adding duplicate listeners by checking for our marker
+  if (element.dataset.stashDropReady) return;
+  element.dataset.stashDropReady = "1";
+
   element.addEventListener("drop", async (ev) => {
     let data;
     try { data = JSON.parse(ev.dataTransfer.getData("text/plain")); } catch { return; }
@@ -521,7 +539,7 @@ Hooks.on("renderActorSheetV2", (app, element) => {
     }
     ui.notifications.info(`${itemData.name} moved to ${app.actor.name}.`);
   }, true);
-});
+}
 
 /* ─── Ready ─── */
 
