@@ -67,17 +67,18 @@
 .crucible.actor-group .party-stash-panel[data-stash-tab="members"].active {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  overflow: hidden;
+  gap: 0.5rem;
+  overflow-y: auto;
 }
 
-/* Header sections (tags, movement, advancement) keep natural size */
+/* All direct children stay at natural height unless marked to expand */
 .crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-section {
   flex-shrink: 0;
 }
 
-/* The members list gets remaining space and scrolls internally */
-.crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-section.members {
+/* The members list is a div.sheet-section.members > ol — expand it */
+.crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-section.members,
+.crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .members {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
