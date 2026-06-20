@@ -67,22 +67,32 @@
 .crucible.actor-group .party-stash-panel[data-stash-tab="members"].active {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
-  padding-top: 1rem;
+  padding-top: 0;
 }
 
-/* All direct children stay at natural height unless marked to expand */
-.crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-section {
+/* Keep header and details at their natural size */
+.crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-header {
   flex-shrink: 0;
 }
 
-/* The members list is a div.sheet-section.members > ol — expand it */
-.crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-section.members,
-.crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .members {
-  flex: 1;
+.crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-details {
+  flex-shrink: 0;
+}
+
+/* Non-members sheet sections stay at natural height */
+.crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-section:not(.members) {
+  flex-shrink: 0;
+}
+
+/* The members list fills remaining space and scrolls internally */
+.crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-section.members {
+  flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
+  height: auto;
 }
 
 /* ─── Empty Stash ─── */
