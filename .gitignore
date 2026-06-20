@@ -1,0 +1,10 @@
+# Foundry VTT user data — ignore actual installs
+# (users clone/download this repo into their Data/modules/ folder)
+.DS_Store
+Thumbs.db
+*.log
+node_modules/
+dist/
+*.swp
+*.swo
+*~

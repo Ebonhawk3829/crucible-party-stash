@@ -1,0 +1,188 @@
+/* ─── Tab Bar ─── */
+
+.crucible.actor-group .party-stash-tabs {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--color-border-dark, #444);
+  padding: 0 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.crucible.actor-group .party-stash-tabs .tab-item {
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+  opacity: 0.6;
+  border-bottom: 2px solid transparent;
+  transition: opacity 0.2s, border-color 0.2s;
+  text-decoration: none;
+  color: var(--color-text-light-highlight, #fff);
+  user-select: none;
+}
+
+.crucible.actor-group .party-stash-tabs .tab-item.active {
+  opacity: 1;
+  border-bottom-color: var(--color-warm-2, #c33);
+}
+
+.crucible.actor-group .party-stash-tabs .tab-item:hover {
+  opacity: 0.85;
+  text-shadow: 0 0 6px var(--color-shadow-primary, rgba(255,255,255,0.3));
+}
+
+/* ─── Tab Content Visibility ─── */
+
+.crucible.actor-group .tab-content {
+  display: none;
+}
+
+.crucible.actor-group .tab-content.active {
+  display: block;
+}
+
+/* ─── Empty Stash ─── */
+
+.crucible.actor-group .stash-empty {
+  text-align: center;
+  padding: 2rem 1rem;
+  opacity: 0.7;
+}
+
+.crucible.actor-group .stash-empty i {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.crucible.actor-group .stash-empty .hint {
+  font-size: var(--font-size-12, 0.75rem);
+  opacity: 0.6;
+  margin-top: 0.25rem;
+}
+
+/* ─── Stash Container ─── */
+
+.crucible.actor-group .stash-container > .hint {
+  font-size: var(--font-size-12, 0.75rem);
+  opacity: 0.6;
+  margin-bottom: 0.5rem;
+  text-align: center;
+}
+
+/* ─── Stash Items List ─── */
+
+.crucible.actor-group .stash-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: min(60vh, 600px);
+  overflow-y: auto;
+}
+
+.crucible.actor-group .stash-list .stash-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--color-border-light-1, #333);
+  transition: background 0.15s;
+}
+
+.crucible.actor-group .stash-list .stash-item:last-child {
+  border-bottom: none;
+}
+
+.crucible.actor-group .stash-list .stash-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.crucible.actor-group .stash-list .stash-item .icon {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.crucible.actor-group .stash-list .stash-item .title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.crucible.actor-group .stash-list .stash-item .title h4 {
+  margin: 0;
+  font-size: var(--font-size-13, 0.8125rem);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crucible.actor-group .stash-list .stash-item .tag {
+  font-size: var(--font-size-11, 0.6875rem);
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-text-light-highlight, #ccc);
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.crucible.actor-group .stash-list .stash-item .controls {
+  display: flex;
+  gap: 0.25rem;
+  flex: 0 0 auto;
+}
+
+.crucible.actor-group .stash-list .stash-item .controls .control {
+  cursor: pointer;
+  opacity: 0.5;
+  padding: 0.2rem 0.3rem;
+  border-radius: 3px;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.crucible.actor-group .stash-list .stash-item .controls .control:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.crucible.actor-group .stash-list .stash-item .controls .control[data-action="stash-remove"]:hover {
+  color: var(--color-damage-2, #c33);
+}
+
+.crucible.actor-group .stash-list .stash-item .controls .control[data-action="stash-give"]:hover {
+  color: var(--color-warm-2, #c33);
+}
+
+/* ─── Drag Feedback ─── */
+
+.crucible.actor-group .tab-content[data-tab="stash"].drag-over {
+  background: rgba(255, 255, 255, 0.03);
+  outline: 2px dashed var(--color-warm-2, #c33);
+  outline-offset: -4px;
+  border-radius: 4px;
+  min-height: 100px;
+}
+
+/* ─── Scrollbar styling for stash list ─── */
+
+.crucible.actor-group .stash-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.crucible.actor-group .stash-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.crucible.actor-group .stash-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.crucible.actor-group .stash-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
