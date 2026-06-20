@@ -24,4 +24,4 @@
   "CRUCIBLE_PARTY_STASH.MinRole": "Minimum Role for Stash Access",
   "CRUCIBLE_PARTY_STASH.MinRoleHint": "The minimum user role required to see and use the Shared Stash tab on the group sheet. Users below this role will only see the standard Members tab. Gamemasters always have access.",
   "CRUCIBLE_PARTY_STASH.NoPermission": "You do not have permission to modify the party stash."
-}}
+}
