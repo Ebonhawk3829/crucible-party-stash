@@ -15,6 +15,17 @@ function _checkStashCapacity(stash) {
   return { ok: max === 0 || stash.length < max, max };
 }
 
+/**
+ * Whether the current user meets the minimum role to see and use the stash.
+ * GMs always pass.
+ * @returns {boolean}
+ */
+function canUseStash() {
+  if (game.user.isGM) return true;
+  const minRole = game.settings.get(MODULE_ID, "minRole");
+  return game.user.role >= minRole;
+}
+
 /* ─── Initialization ─── */
 
 Hooks.once("init", () => {
@@ -30,6 +41,22 @@ Hooks.once("init", () => {
     name: "CRUCIBLE_PARTY_STASH.ConfirmTransfer",
     hint: "CRUCIBLE_PARTY_STASH.ConfirmTransferHint",
     scope: "world", config: true, type: Boolean, default: true
+  });
+
+  game.settings.register(MODULE_ID, "minRole", {
+    name: "CRUCIBLE_PARTY_STASH.MinRole",
+    hint: "CRUCIBLE_PARTY_STASH.MinRoleHint",
+    scope: "world",
+    config: true,
+    type: new foundry.data.fields.NumberField({
+      initial: CONST.USER_ROLES.PLAYER,
+      choices: {
+        [CONST.USER_ROLES.PLAYER]: "USER.RolePlayer",
+        [CONST.USER_ROLES.TRUSTED]: "USER.RoleTrusted",
+        [CONST.USER_ROLES.ASSISTANT]: "USER.RoleAssistant",
+        [CONST.USER_ROLES.GAMEMASTER]: "USER.RoleGamemaster"
+      }
+    })
   });
 });
 
@@ -83,6 +110,9 @@ async function _renderStashHTML(items, isEditable) {
 Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options) => {
   const actor = app.actor;
   if (!actor || actor.type !== "group") return;
+
+  // ── permission gate ──
+  if (!canUseStash()) return;
 
   // element is the <form> app frame. window-content is inside it.
   const windowContent = element.querySelector(".window-content");
