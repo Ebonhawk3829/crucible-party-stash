@@ -1,22 +1,23 @@
 /* ─── Window Content Layout ─── */
-
-.crucible.actor-group .window-content {
-  display: flex;
-  flex-direction: column;
+/* Crucible already sets flex-direction:column on .window-content
+   via .crucible.sheet.actor-group — no need to duplicate.
+   But we do need to ensure overflow is constrained so the flex
+   children can compute their sizes. */
+.crucible.sheet.actor-group .window-content {
+  overflow: hidden;
 }
 
 /* ─── Tab Bar ─── */
-
-.crucible.actor-group .party-stash-tabs {
+.crucible.sheet.actor-group .party-stash-tabs {
   display: flex;
   gap: 0;
   width: 100%;
   box-sizing: border-box;
   border-bottom: 1px solid var(--color-border-dark, #444);
-  flex-shrink: 0; /* don't collapse in flex parent */
+  flex-shrink: 0;
 }
 
-.crucible.actor-group .party-stash-tab-item {
+.crucible.sheet.actor-group .party-stash-tab-item {
   padding: 0.5rem 1rem;
   cursor: pointer;
   opacity: 0.6;
@@ -29,16 +30,16 @@
   font-size: var(--font-size-13, 0.8125rem);
 }
 
-.crucible.actor-group .party-stash-tab-item.active {
+.crucible.sheet.actor-group .party-stash-tab-item.active {
   opacity: 1;
   border-bottom-color: var(--color-warm-2, #c33);
 }
 
-.crucible.actor-group .party-stash-tab-item:hover {
+.crucible.sheet.actor-group .party-stash-tab-item:hover {
   opacity: 0.85;
 }
 
-.crucible.actor-group .party-stash-tab-item .stash-count {
+.crucible.sheet.actor-group .party-stash-tab-item .stash-count {
   display: inline-block;
   background: var(--color-warm-2, #c33);
   color: #fff;
@@ -51,48 +52,37 @@
 }
 
 /* ─── Tab Panels ─── */
-
-.crucible.actor-group .party-stash-panel {
+.crucible.sheet.actor-group .party-stash-panel {
   display: none;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
 }
 
-.crucible.actor-group .party-stash-panel.active {
-  display: block;
-}
-
-/* ─── Members panel: replicate the original flex layout ─── */
-.crucible.actor-group .party-stash-panel[data-stash-tab="members"].active {
+.crucible.sheet.actor-group .party-stash-panel.active {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  padding-top: 0;
 }
 
-/* Keep header and details at their natural size */
-.crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-header {
-  flex-shrink: 0;
-}
-
-.crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-details {
-  flex-shrink: 0;
-}
-
-/* Non-members sheet sections stay at natural height */
-.crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-section:not(.members) {
-  flex-shrink: 0;
-}
-
-/* The members list fills remaining space and scrolls internally */
-.crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-section.members {
-  flex: 1 1 0;
-  min-height: 0;
+/* Stash tab gets its own scrolling */
+.crucible.sheet.actor-group .party-stash-panel[data-stash-tab="stash"].active {
   overflow-y: auto;
+}
+
+/* Members panel children: header and details stay fixed */
+.crucible.sheet.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-header,
+.crucible.sheet.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-details {
+  flex-shrink: 0;
+}
+
+/* The members section: override Crucible's height:0 and let flex do its job.
+   The crucial bit: we MUST use the same .sheet selector Crucible uses,
+   otherwise their rule wins. */
+.crucible.sheet.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-section.members {
+  flex: 1 1 auto;
+  min-height: 0;
   height: auto;
+  overflow-y: auto;
 }
 
 /* ─── Empty Stash ─── */
