@@ -346,9 +346,11 @@ async function _pickRecipient(choices) {
     required: true,
     blank: false
   });
-  const content = document.createElement("div");
-  content.style.padding = "0.5rem";
-  content.append(field.toFormGroup({}, { name: "recipient" }));
+
+  const wrapper = document.createElement("div");
+  wrapper.style.padding = "0.5rem";
+  wrapper.append(field.toFormGroup({}, { name: "recipient" }));
+  const contentHTML = wrapper.outerHTML;
 
   try {
     return await foundry.applications.api.DialogV2.prompt({
@@ -356,19 +358,21 @@ async function _pickRecipient(choices) {
         title: game.i18n.localize("CRUCIBLE_PARTY_STASH.GiveItem"),
         icon: "fa-solid fa-hand-holding"
       },
-      content,
+      content: contentHTML,
       ok: {
         label: game.i18n.localize("CRUCIBLE_PARTY_STASH.Give"),
         icon: "fa-solid fa-check",
         callback: (event, button, dialog) => {
-          // dialog is the dialog's HTMLElement
           const select = dialog.querySelector("select[name=recipient]");
           return select?.value || null;
         }
       },
       rejectClose: false
     });
-  } catch { return null; }
+  } catch (err) {
+    console.error(`${MODULE_ID} | _pickRecipient error:`, err);
+    return null;
+  }
 }
 
 /* ─── Stash → character (V1 dropActorSheetData hook) ─── */
