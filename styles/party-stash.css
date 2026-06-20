@@ -63,7 +63,7 @@
   display: block;
 }
 
-/* ─── Members panel: replicate the original flex layout ─── */
+/* ─── Members panel ─── */
 .crucible.actor-group .party-stash-panel[data-stash-tab="members"].active {
   display: flex;
   flex-direction: column;
@@ -71,12 +71,12 @@
   overflow-y: auto;
 }
 
-/* All direct children stay at natural height unless marked to expand */
+/* Children retain natural height unless explicitly expanded */
 .crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-section {
   flex-shrink: 0;
 }
 
-/* The members list is a div.sheet-section.members > ol — expand it */
+/* Expand the members list */
 .crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-section.members,
 .crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .members {
   flex: 1;
@@ -95,7 +95,7 @@
 
 .crucible.actor-group .party-stash-panel[data-stash-tab="members"] .members > h3 {
   flex-shrink: 0;
-  margin-top: -0.75rem;   /* this now escapes into the parent panel, not clipped */
+  margin-top: -0.75rem;   /* Negative margin pulls heading upward into the panel */
 }
 /* ─── Empty Stash ─── */
 

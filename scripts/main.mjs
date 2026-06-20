@@ -77,7 +77,6 @@ async function _renderStashHTML(items, isEditable) {
     );
   } catch (err) {
     console.error(`${MODULE_ID} | Template render failed, using fallback`, err);
-    // Inline fallback if template fails
     if (!items.length) {
       return `<div class="stash-empty">
         <p><i class="fa-solid fa-box-open"></i> The party stash is empty.</p>
@@ -102,10 +101,9 @@ async function _renderStashHTML(items, isEditable) {
 
 /* ─── Core Injection ───
  *
- * NOTE: CrucibleGroupActorSheet uses root: true on its single PARTS entry.
- * Foundry strips the template's outer <section class="sheet-body"> and places
- * its children directly inside .window-content. We target .window-content
- * directly, not a non-existent section.sheet-body. */
+ * CrucibleGroupActorSheet uses root: true on its single PARTS entry, so Foundry
+ * places children directly inside .window-content rather than a .sheet-body wrapper.
+ * We target .window-content accordingly. */
 
 Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options) => {
   const actor = app.actor;
@@ -114,7 +112,6 @@ Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options)
   // ── permission gate ──
   if (!canUseStash()) return;
 
-  // element is the <form> app frame. window-content is inside it.
   const windowContent = element.querySelector(".window-content");
   if (!windowContent) return;
 
@@ -137,10 +134,9 @@ Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options)
     </a>
   `;
 
-  // Capture ALL current children of window-content (the original sheet content)
+  // Capture original sheet children into the members panel
   const originalChildren = Array.from(windowContent.childNodes);
 
-  // Members tab wraps the original content
   const membersTab = document.createElement("div");
   membersTab.className = `party-stash-panel ${activeTab === "members" ? "active" : ""}`;
   membersTab.dataset.stashTab = "members";
@@ -154,7 +150,6 @@ Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options)
   stashTab.dataset.stashTab = "stash";
   stashTab.innerHTML = await _renderStashHTML(stashItems, isEditable);
 
-  // Rebuild window-content: tab bar, then the two panels
   windowContent.innerHTML = "";
   windowContent.appendChild(tabBar);
   windowContent.appendChild(membersTab);
@@ -257,33 +252,21 @@ function _activateStashDropListeners(stashTab, groupActor) {
 }
 
 /* ─── Click: Give / Remove ───
- * IMPORTANT: We use data-stash-action instead of data-action to avoid
- * collision with Foundry's ApplicationV2 action system, which would
- * intercept and swallow clicks on data-action elements. */
+ * Uses data-stash-action instead of data-action to prevent Foundry's
+ * ApplicationV2 action system from intercepting clicks. */
 
 function _activateStashActionListeners(stashTab, groupActor) {
   // Prevent draggable parent <li> from eating clicks on control buttons
   stashTab.addEventListener("mousedown", (ev) => {
     const control = ev.target.closest("[data-stash-action]");
     if (control) {
-      console.log("CRUCIBLE STASH [mousedown] on control:", control.dataset.stashAction, "index:", control.dataset.index, "target:", ev.target.className, "currentTarget:", ev.currentTarget.className);
       ev.stopPropagation();
-    } else {
-      // Log clicks on the draggable <li> itself to see if drag starts
-      const li = ev.target.closest(".stash-item");
-      if (li) {
-        console.log("CRUCIBLE STASH [mousedown] on .stash-item (not a control)");
-      }
     }
   });
 
   stashTab.addEventListener("click", async (ev) => {
     const el = ev.target.closest("[data-stash-action]");
-    if (!el) {
-      console.log("CRUCIBLE STASH [click] — no data-stash-action target found, target:", ev.target.className, "currentTarget:", ev.currentTarget.className);
-      return;
-    }
-    console.log("CRUCIBLE STASH [click] — action:", el.dataset.stashAction, "index:", el.dataset.index, "target:", ev.target.className);
+    if (!el) return;
     ev.preventDefault();
     ev.stopPropagation();
 
@@ -301,16 +284,9 @@ function _activateStashActionListeners(stashTab, groupActor) {
     }
 
     if (action === "give") {
-      console.log("CRUCIBLE STASH [give] system.members raw:", groupActor.system.members);
-      console.log("CRUCIBLE STASH [give] type:", typeof groupActor.system.members,
-                  "isArray:", Array.isArray(groupActor.system.members));
-      console.log("CRUCIBLE STASH [give] first member:", groupActor.system.members[0]);
-      console.log("CRUCIBLE STASH [give] .actors Set:", groupActor.system.members.actors);
-
       const memberArray = groupActor.system.members ?? [];
 
-      // Crucible attaches an `actors` Set of resolved Actor instances
-      // and an `ids` Set of actor IDs directly on the members array
+      // Crucible attaches an `actors` Set of resolved Actor instances on the members array
       const actors = memberArray.actors
         ? Array.from(memberArray.actors)
         : Array.from(memberArray).map(m => game.actors.get(m.actorId ?? m.id ?? m._id)).filter(Boolean);
@@ -463,7 +439,7 @@ function _setupHeroDropInterception(app, element) {
       await _setStash(groupActor, stash);
     }
     ui.notifications.info(`${itemData.name} moved to ${app.actor.name}.`);
-  }, true); // capture phase
+  }, true);
 }
 
 /* ─── Ready ─── */
