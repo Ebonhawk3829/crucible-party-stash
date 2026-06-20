@@ -1,84 +1,78 @@
 # Crucible Party Stash
 
-A module for [Foundry VTT](https://foundryvtt.com/)'s **Crucible** system (V14+) that adds a shared party inventory tab to the Group actor sheet.
+![Foundry v14](https://img.shields.io/badge/Foundry-v14-informational)
+![Crucible](https://img.shields.io/badge/System-Crucible-orange)
+![Latest Release](https://img.shields.io/github/v/release/Ebonhawk3829/crucible-party-stash?label=Latest)
+![License](https://img.shields.io/github/license/Ebonhawk3829/crucible-party-stash)
+
+A shared party inventory for the [Crucible](https://foundryvtt.com/packages/crucible) game system in [Foundry Virtual Tabletop](https://foundryvtt.com/).
+
+Adds a **Stash** tab to the Group Actor sheet where players can pool items, distribute loot, and manage shared resources — all without leaving the group sheet.
+
+![Screenshot of the stash tab on the group sheet](docs/screenshot-stash-tab.png)
 
 ## Features
 
-- **Shared stash tab** — Injects a "Shared Stash" tab into the Crucible Group Actor Sheet alongside the existing Members content.
-- **Drag & drop** — Drag items from any character sheet directly into the party stash. Drag items from the stash back onto a character sheet to retrieve them.
-- **Give items** — Click the "Give" icon on any stashed item to pick a party member and transfer it directly.
-- **Capacity limit** — Optionally cap the number of items the stash can hold (configurable in module settings, 0 = unlimited).
-- **Multi-sheet support** — Works with both V1 and V2 (ApplicationV2) character sheets via `dropActorSheetData` hook and direct DOM event interception.
+- **Shared Stash Tab** — A new tab on the Crucible Group Actor sheet for pooling party items alongside the existing Members tab.
+- **Drag & Drop** — Drag items from any character sheet into the stash, or drag them back out to a character.
+- **Give to Character** — Click the give button to hand an item directly to any party member via a dropdown picker.
+- **Move or Copy** — Optionally remove the item from the source character when stashing, or keep a copy on both.
+- **Capacity Limit** — Set a maximum number of items the stash can hold (0 = unlimited).
+- **Role-Based Access** — Configure the minimum user role required to see and use the stash. GMs always have access.
+- **Quantity Display** — Shows item quantities for stackable Crucible items.
 
 ## Installation
 
-### Option 1: Install via Manifest URL (Recommended)
-1. In Foundry VTT, navigate to **Add-on Modules** → **Install Module**
+### From Foundry
+
+1. Open Foundry VTT and go to **Add-on Modules** → **Install Module**.
 2. Paste the following URL into the **Manifest URL** field:
    ```
-   https://raw.githubusercontent.com/Ebonhawk3829/crucible-party-stash/main/module.json
+   https://github.com/Ebonhawk3829/crucible-party-stash/releases/latest/download/module.json
    ```
-3. Click **Install**
-4. Enable the module in your world: **Manage Modules** → **Crucible Party Stash**
+3. Click **Install**.
+4. Enable the module in your world.
 
-### Option 2: Manual Install
-1. Download the [latest release ZIP](https://github.com/Ebonhawk3829/crucible-party-stash/archive/refs/heads/main.zip)
-2. Extract to `{userData}/Data/modules/crucible-party-stash/`
-3. Enable the module in your Foundry world
+### Manual
 
-### Post-Install
-Open any Group actor sheet — you'll see a "Shared Stash" tab alongside the "Members" tab.
+Download `module.zip` from the [latest release](https://github.com/Ebonhawk3829/crucible-party-stash/releases/latest), extract it into your `Data/modules/` directory, and restart Foundry.
+
+## Requirements
+
+| Requirement | Version |
+|---|---|
+| Foundry VTT | v14+ |
+| Crucible | 0.9.3+ |
+
+This module **only** works with the Crucible game system. It hooks into `CrucibleGroupActorSheet` and will not activate for other systems.
+
+## Settings
+
+All settings are world-scoped and configurable by the GM under **Settings** → **Module Settings** → **Crucible Party Stash**.
+
+| Setting | Default | Description |
+|---|---|---|
+| Stash Capacity | 0 (unlimited) | Maximum number of items the stash can hold. Set to 0 for no limit. |
+| Confirm Transfer | Enabled | Prompt the user to confirm whether to move or copy when dragging an item from a character into the stash. |
+| Minimum Role | Player | The minimum user role required to see and interact with the stash tab. |
 
 ## Usage
 
-### Adding items to the stash
-- **Drag** an item from a hero/adversary sheet onto the Shared Stash tab.
-- A confirmation dialog will ask whether to **Move** (delete from source) or **Copy** (keep the original).
-- The item appears in the shared stash list.
-
-### Removing items from the stash
-- **Drag** a stash item directly onto any character sheet — it will be created on that actor and removed from the stash.
-- Click the **Give** icon (hand-holding) on a stash item to pick a specific party member as the recipient.
-- Click the **Trash** icon to delete the item from the stash permanently.
-
-## Module Settings
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Stash Capacity Limit | 0 (unlimited) | Maximum items the party stash can hold |
-| Confirm item transfers | Yes | Show a confirmation dialog when moving items |
-
-## Data Storage
-
-Items are stored as a **flag** (`crucible-party-stash.stash`) on the Group actor document. This avoids relying on Crucible's embedded document system, since Group actors have no inventory data model and `createEmbeddedDocuments("Item")` may not work reliably on them.
+1. **Open a Group Actor sheet** — the module adds a tab bar with **Members** and **Stash** tabs.
+2. **Add items** — Drag an item from any Hero or Adversary character sheet onto the Stash tab.
+3. **Retrieve items** — Either drag an item from the stash onto a character sheet, or click the give button and pick a party member from the list.
+4. **Remove items** — Click the trash icon to delete an item from the stash entirely.
 
 ## Compatibility
 
-- **Foundry VTT:** Version 14 (minimum)
-- **Crucible System:** Version 0.10.0+ (Alpha)
-- This module is restricted to Crucible system worlds only.
+This module targets Crucible's `CrucibleGroupActorSheet` and uses Foundry V14 APIs including `ApplicationV2`, `DialogV2`, `NumberField` settings, and Handlebars template rendering under the `foundry.applications.handlebars` namespace.
 
-## Development
+It is designed to be non-destructive — stash data is stored as a flag on the Group Actor (`crucible-party-stash.stash`) and does not modify any core Crucible data models.
 
-### Structure
-```
-crucible-party-stash/
-├── module.json             # Module manifest
-├── scripts/
-│   └── main.mjs            # Core module logic
-├── styles/
-│   └── party-stash.css     # Tab and stash styling
-├── templates/
-│   └── stash-panel.hbs     # Handlebars template for the stash tab
-├── lang/
-│   └── en.json             # English localizations
-├── .gitignore
-└── README.md
-```
+### Known Interactions
 
-### Building
-No build step required — this is a plain ES module module. Run `foundryvtt` and test with `CONFIG.debug.hooks = true` in the browser console to verify hook firing.
+- **Ember** — Compatible. The module does not interfere with Ember's adventure content or Vista engine. Stash data persists independently of adventure imports.
 
 ## License
 
-MIT
+This module is released under the [MIT License](LICENSE).
