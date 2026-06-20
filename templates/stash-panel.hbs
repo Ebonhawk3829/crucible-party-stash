@@ -13,15 +13,17 @@
       <div class="title">
         <h4>{{this.name}}</h4>
         <span class="tag">{{this.type}}</span>
-        {{#if this.system.quantity}}<span class="tag">{{localize "CRUCIBLE_PARTY_STASH.Quantity"}}: {{this.system.quantity}}</span>{{/if}}
+        {{#if this.system.quantity}}
+          <span class="tag">{{localize "CRUCIBLE_PARTY_STASH.Quantity"}}: {{this.system.quantity}}</span>
+        {{/if}}
       </div>
       {{#if ../isEditable}}
       <div class="controls">
-        <a class="control stash-action" data-action="stash-give" data-index="{{@index}}"
+        <a class="control" data-stash-action="give" data-index="{{@index}}"
            data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.GiveToCharacter"}}">
           <i class="fa-solid fa-hand-holding"></i>
         </a>
-        <a class="control stash-action" data-action="stash-remove" data-index="{{@index}}"
+        <a class="control" data-stash-action="remove" data-index="{{@index}}"
            data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.RemoveFromStash"}}">
           <i class="fa-solid fa-trash"></i>
         </a>
