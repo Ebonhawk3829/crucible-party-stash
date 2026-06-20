@@ -67,8 +67,8 @@
 .crucible.actor-group .party-stash-panel[data-stash-tab="members"].active {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  overflow-y: auto;
+  gap: 0.25rem;
+  overflow: visible;
 }
 
 /* All direct children stay at natural height unless marked to expand */
