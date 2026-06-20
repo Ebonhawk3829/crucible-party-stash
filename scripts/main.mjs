@@ -73,6 +73,31 @@ async function _renderStashHTML(items, isEditable) {
   }
 }
 
+/* ─── DIAGNOSTIC ─── */
+
+Hooks.on("renderCrucibleGroupActorSheet", (app, element, context, options) => {
+  console.log(`${MODULE_ID} | DIAG: hook fired`);
+  console.log(`${MODULE_ID} | DIAG: element tagName =`, element?.tagName);
+  console.log(`${MODULE_ID} | DIAG: element className =`, element?.className);
+  console.log(`${MODULE_ID} | DIAG: element id =`, element?.id);
+  console.log(`${MODULE_ID} | DIAG: .window-content =`, element?.querySelector?.(".window-content"));
+  console.log(`${MODULE_ID} | DIAG: section.sheet-body =`, element?.querySelector?.("section.sheet-body"));
+  console.log(`${MODULE_ID} | DIAG: all children of element:`,
+    element?.children ? Array.from(element.children).map(c => `${c.tagName}.${c.className}`) : "none");
+
+  const wc = element?.querySelector?.(".window-content");
+  if (!wc) {
+    console.log(`${MODULE_ID} | DIAG: element has sheet-body directly?`,
+      element?.querySelector?.(".sheet-body"));
+    console.log(`${MODULE_ID} | DIAG: element matches .window-content?`,
+      element?.matches?.(".window-content"));
+    console.log(`${MODULE_ID} | DIAG: element matches section.sheet-body?`,
+      element?.matches?.("section.sheet-body"));
+    console.log(`${MODULE_ID} | DIAG: element.closest('.application') =`,
+      element?.closest?.(".application"));
+  }
+});
+
 /* ─── Core Injection ─── */
 
 Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options) => {
