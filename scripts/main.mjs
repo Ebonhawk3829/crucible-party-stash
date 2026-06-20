@@ -271,6 +271,9 @@ function _activateStashActionListeners(stashTab, groupActor) {
     }
 
     if (action === "give") {
+      console.log("CRUCIBLE STASH [give] system.members raw:", groupActor.system.members);
+      console.log("CRUCIBLE STASH [give] type:", typeof groupActor.system.members,
+                  "isArray:", Array.isArray(groupActor.system.members));
       const members = (groupActor.system.members ?? []).filter(m => m.actor instanceof Actor);
       if (!members.length) {
         ui.notifications.warn(game.i18n.localize("CRUCIBLE_PARTY_STASH.NoMembers"));

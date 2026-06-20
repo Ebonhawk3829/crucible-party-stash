@@ -63,6 +63,19 @@
   display: block;
 }
 
+/* ─── Members panel: replicate the original flex layout ─── */
+.crucible.actor-group .party-stash-panel[data-stash-tab="members"].active {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+/* Pass-through direct-child rules so > .sheet-section still works */
+.crucible.actor-group .window-content > .party-stash-panel[data-stash-tab="members"] > .sheet-section {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 /* ─── Empty Stash ─── */
 
 .crucible.actor-group .stash-empty {
