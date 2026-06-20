@@ -234,14 +234,26 @@ function _activateStashDropListeners(stashTab, groupActor) {
 function _activateStashActionListeners(stashTab, groupActor) {
   // Prevent draggable parent <li> from eating clicks on control buttons
   stashTab.addEventListener("mousedown", (ev) => {
-    if (ev.target.closest("[data-stash-action]")) {
+    const control = ev.target.closest("[data-stash-action]");
+    if (control) {
+      console.log("CRUCIBLE STASH [mousedown] on control:", control.dataset.stashAction, "index:", control.dataset.index, "target:", ev.target.className, "currentTarget:", ev.currentTarget.className);
       ev.stopPropagation();
+    } else {
+      // Log clicks on the draggable <li> itself to see if drag starts
+      const li = ev.target.closest(".stash-item");
+      if (li) {
+        console.log("CRUCIBLE STASH [mousedown] on .stash-item (not a control)");
+      }
     }
   });
 
   stashTab.addEventListener("click", async (ev) => {
     const el = ev.target.closest("[data-stash-action]");
-    if (!el) return;
+    if (!el) {
+      console.log("CRUCIBLE STASH [click] — no data-stash-action target found, target:", ev.target.className, "currentTarget:", ev.currentTarget.className);
+      return;
+    }
+    console.log("CRUCIBLE STASH [click] — action:", el.dataset.stashAction, "index:", el.dataset.index, "target:", ev.target.className);
     ev.preventDefault();
     ev.stopPropagation();
 
