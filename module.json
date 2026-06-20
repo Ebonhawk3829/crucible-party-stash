@@ -3,7 +3,7 @@
   "title": "Crucible Party Stash",
   "description": "Adds a shared inventory tab to the Crucible Group actor sheet. Party members can drag items in and out of a shared stash.",
   "authors": [{ "name": "Ebonhawk3829" }],
-  "version": "0.4.4",
+  "version": "0.4.5",
   "compatibility": {
     "minimum": "14",
     "verified": "14"

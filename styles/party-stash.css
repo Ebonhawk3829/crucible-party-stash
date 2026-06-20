@@ -67,13 +67,21 @@
 .crucible.actor-group .party-stash-panel[data-stash-tab="members"].active {
   display: flex;
   flex-direction: column;
+  gap: inherit;
   overflow-y: auto;
 }
 
-/* Pass-through direct-child rules so > .sheet-section still works */
-.crucible.actor-group .window-content > .party-stash-panel[data-stash-tab="members"] > .sheet-section {
-  flex: 1 1 auto;
+/* All direct children stay at natural height unless marked to expand */
+.crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-section {
+  flex-shrink: 0;
+}
+
+/* The members list is a div.sheet-section.members > ol — expand it */
+.crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .sheet-section.members,
+.crucible.actor-group .party-stash-panel[data-stash-tab="members"] > .members {
+  flex: 1;
   min-height: 0;
+  overflow-y: auto;
 }
 
 /* ─── Empty Stash ─── */

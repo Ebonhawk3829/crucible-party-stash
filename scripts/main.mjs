@@ -274,14 +274,24 @@ function _activateStashActionListeners(stashTab, groupActor) {
       console.log("CRUCIBLE STASH [give] system.members raw:", groupActor.system.members);
       console.log("CRUCIBLE STASH [give] type:", typeof groupActor.system.members,
                   "isArray:", Array.isArray(groupActor.system.members));
-      const members = (groupActor.system.members ?? []).filter(m => m.actor instanceof Actor);
-      if (!members.length) {
+      console.log("CRUCIBLE STASH [give] first member:", groupActor.system.members[0]);
+      console.log("CRUCIBLE STASH [give] .actors Set:", groupActor.system.members.actors);
+
+      const memberArray = groupActor.system.members ?? [];
+
+      // Crucible attaches an `actors` Set of resolved Actor instances
+      // and an `ids` Set of actor IDs directly on the members array
+      const actors = memberArray.actors
+        ? Array.from(memberArray.actors)
+        : Array.from(memberArray).map(m => game.actors.get(m.actorId ?? m.id ?? m._id)).filter(Boolean);
+
+      if (!actors.length) {
         ui.notifications.warn(game.i18n.localize("CRUCIBLE_PARTY_STASH.NoMembers"));
         return;
       }
 
       const choices = {};
-      for (const m of members) choices[m.actorId] = m.actor.name;
+      for (const actor of actors) choices[actor.id] = actor.name;
       const recipient = await _pickRecipient(choices);
       if (!recipient) return;
 
