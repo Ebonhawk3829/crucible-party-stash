@@ -83,9 +83,13 @@
   min-height: 0;
   overflow-y: auto;
   margin-top: 1.5rem;
-  padding-top: 1.5rem;
 }
 
+.crucible.actor-group .party-stash-panel[data-stash-tab="members"] .members > .items-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
 /* ─── Empty Stash ─── */
 
 .crucible.actor-group .stash-empty {
