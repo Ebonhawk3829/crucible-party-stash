@@ -73,50 +73,20 @@ async function _renderStashHTML(items, isEditable) {
   }
 }
 
-/* ─── DIAGNOSTIC ─── */
-
-Hooks.on("renderCrucibleGroupActorSheet", (app, element, context, options) => {
-  console.log(`${MODULE_ID} | DIAG: hook fired`);
-  console.log(`${MODULE_ID} | DIAG: element tagName =`, element?.tagName);
-  console.log(`${MODULE_ID} | DIAG: element className =`, element?.className);
-  console.log(`${MODULE_ID} | DIAG: element id =`, element?.id);
-  console.log(`${MODULE_ID} | DIAG: .window-content =`, element?.querySelector?.(".window-content"));
-  console.log(`${MODULE_ID} | DIAG: section.sheet-body =`, element?.querySelector?.("section.sheet-body"));
-  console.log(`${MODULE_ID} | DIAG: all children of element:`,
-    element?.children ? Array.from(element.children).map(c => `${c.tagName}.${c.className}`) : "none");
-
-  const wc = element?.querySelector?.(".window-content");
-  if (!wc) {
-    console.log(`${MODULE_ID} | DIAG: element has sheet-body directly?`,
-      element?.querySelector?.(".sheet-body"));
-    console.log(`${MODULE_ID} | DIAG: element matches .window-content?`,
-      element?.matches?.(".window-content"));
-    console.log(`${MODULE_ID} | DIAG: element matches section.sheet-body?`,
-      element?.matches?.("section.sheet-body"));
-    console.log(`${MODULE_ID} | DIAG: element.closest('.application') =`,
-      element?.closest?.(".application"));
-  }
-});
-
-/* ─── Core Injection ─── */
+/* ─── Core Injection ───
+ *
+ * NOTE: CrucibleGroupActorSheet uses root: true on its single PARTS entry.
+ * Foundry strips the template's outer <section class="sheet-body"> and places
+ * its children directly inside .window-content. We target .window-content
+ * directly, not a non-existent section.sheet-body. */
 
 Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options) => {
   const actor = app.actor;
   if (!actor || actor.type !== "group") return;
 
-  // Guard: if we already injected into this exact DOM tree, skip.
-  // The element is the app's root HTMLElement (the window frame).
-  // We use a data attribute on the content area to detect re-injection.
+  // element is the <form> app frame. window-content is inside it.
   const windowContent = element.querySelector(".window-content");
   if (!windowContent) return;
-
-  // On every re-render, ApplicationV2 replaces the part HTML inside window-content.
-  // So we need to re-inject every time. But we only get ONE hook call per render
-  // cycle for this specific hook name, so no dedup needed.
-
-  // Find the rendered part — the <section class="sheet-body"> from group.hbs
-  const sheetBody = windowContent.querySelector("section.sheet-body");
-  if (!sheetBody) return;
 
   const isEditable = app.isEditable;
   const stashItems = _getStash(actor);
@@ -137,14 +107,8 @@ Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options)
     </a>
   `;
 
-  // Capture the original sheet content
-  const originalChildren = Array.from(sheetBody.children);
-
-  // Clear sheet body and rebuild
-  sheetBody.innerHTML = "";
-
-  // Insert tab bar BEFORE the sheet content, as the first child of sheetBody
-  sheetBody.appendChild(tabBar);
+  // Capture ALL current children of window-content (the original sheet content)
+  const originalChildren = Array.from(windowContent.childNodes);
 
   // Members tab wraps the original content
   const membersTab = document.createElement("div");
@@ -153,14 +117,18 @@ Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options)
   for (const child of originalChildren) {
     membersTab.appendChild(child);
   }
-  sheetBody.appendChild(membersTab);
 
   // Stash tab
   const stashTab = document.createElement("div");
   stashTab.className = `party-stash-panel ${activeTab === "stash" ? "active" : ""}`;
   stashTab.dataset.stashTab = "stash";
   stashTab.innerHTML = await _renderStashHTML(stashItems, isEditable);
-  sheetBody.appendChild(stashTab);
+
+  // Rebuild window-content: tab bar, then the two panels
+  windowContent.innerHTML = "";
+  windowContent.appendChild(tabBar);
+  windowContent.appendChild(membersTab);
+  windowContent.appendChild(stashTab);
 
   // ─── Tab switching ───
   tabBar.addEventListener("click", (ev) => {
@@ -172,15 +140,13 @@ Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options)
     tabBar.querySelectorAll(".party-stash-tab-item").forEach(l => {
       l.classList.toggle("active", l.dataset.stashTab === t);
     });
-    sheetBody.querySelectorAll(".party-stash-panel").forEach(p => {
+    windowContent.querySelectorAll(".party-stash-panel").forEach(p => {
       p.classList.toggle("active", p.dataset.stashTab === t);
     });
   });
 
-  // ─── Stash drop listeners ───
+  // ─── Stash listeners ───
   _activateStashDropListeners(stashTab, actor);
-
-  // ─── Stash click listeners (give/remove) ───
   _activateStashActionListeners(stashTab, actor);
 });
 

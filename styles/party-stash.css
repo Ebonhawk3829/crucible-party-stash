@@ -1,3 +1,10 @@
+/* ─── Window Content Layout ─── */
+
+.crucible.actor-group .window-content {
+  display: flex;
+  flex-direction: column;
+}
+
 /* ─── Tab Bar ─── */
 
 .crucible.actor-group .party-stash-tabs {
