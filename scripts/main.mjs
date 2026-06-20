@@ -362,8 +362,9 @@ async function _pickRecipient(choices) {
       ok: {
         label: game.i18n.localize("CRUCIBLE_PARTY_STASH.Give"),
         icon: "fa-solid fa-check",
-        callback: (event, button, dialog) => {
-          const select = dialog.querySelector("select[name=recipient]");
+        callback: (event, button) => {
+          const form = button.closest("form") ?? button.closest(".window-content");
+          const select = form?.querySelector("select[name=recipient]");
           return select?.value || null;
         }
       },
