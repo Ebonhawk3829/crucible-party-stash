@@ -73,18 +73,20 @@ function _isStackable(itemData) {
  */
 function _stashEntryMatches(a, b) {
   if (!_isStackable(a) || !_isStackable(b)) return false;
-  const clean = obj => {
-    const c = foundry.utils.deepClone(obj);
-    delete c._id;
-    delete c._stashId;
-    delete c._stats;
-    delete c.sort;
-    delete c.ownership;
-    delete c.folder;
-    if (c.system) delete c.system.quantity;
-    return c;
-  };
-  return foundry.utils.objectsEqual(clean(a), clean(b));
+  return foundry.utils.objectsEqual(_cleanEntryForMerge(a), _cleanEntryForMerge(b));
+}
+
+/** Strip document-level metadata from an entry for identity comparison. */
+function _cleanEntryForMerge(obj) {
+  const c = foundry.utils.deepClone(obj);
+  delete c._id;
+  delete c._stashId;
+  delete c._stats;
+  delete c.sort;
+  delete c.ownership;
+  delete c.folder;
+  if (c.system) delete c.system.quantity;
+  return c;
 }
 
 /**
@@ -387,7 +389,32 @@ function _activateStashDropListeners(stashTab, groupActor) {
       const canMerge = _isStackable(itemData);
       console.log(`${MODULE_ID} | [drop] Merge check: isStackable=${canMerge}, stashEntries=${s.length}`);
       const mergeIdx = canMerge
-        ? s.findIndex(e => { const m = _stashEntryMatches(e, itemData); console.log(`${MODULE_ID} | [drop]   ~ compare with entry ${e._stashId?.slice(0,8)}: ${m}`); return m; })
+        ? s.findIndex(e => {
+            const cleanA = _cleanEntryForMerge(e);
+            const cleanB = _cleanEntryForMerge(itemData);
+            const match = foundry.utils.objectsEqual(cleanA, cleanB);
+            if (!match) {
+              // Find first differing key for diagnostics
+              const allKeys = new Set([...Object.keys(cleanA), ...Object.keys(cleanB)]);
+              for (const k of allKeys) {
+                if (!foundry.utils.objectsEqual(cleanA[k], cleanB[k])) {
+                  console.log(`${MODULE_ID} | [drop]   ~ mismatch on key "${k}"`);
+                  if (k === "system") {
+                    const sysKeys = new Set([...Object.keys(cleanA.system ?? {}), ...Object.keys(cleanB.system ?? {})]);
+                    for (const sk of sysKeys) {
+                      if (!foundry.utils.objectsEqual(cleanA.system?.[sk], cleanB.system?.[sk])) {
+                        console.log(`${MODULE_ID} | [drop]   ~   system.${sk} differs`);
+                      }
+                    }
+                  }
+                  break;
+                }
+              }
+            } else {
+              console.log(`${MODULE_ID} | [drop]   ~ match with entry ${e._stashId?.slice(0,8)}`);
+            }
+            return match;
+          })
         : -1;
       if (mergeIdx !== -1) {
         console.log(`${MODULE_ID} | [drop] Merging with entry ${mergeIdx}, current qty=${s[mergeIdx].system.quantity ?? 1}, adding ${chosenQty}`);
