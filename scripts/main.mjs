@@ -550,7 +550,20 @@ async function _transferFromStash(groupActor, stashId, targetActor, quantity) {
       itemData.system.quantity = takeQty;
     }
 
-    const created = await targetActor.createEmbeddedDocuments("Item", [itemData]);
+    // If stackable, try to merge into an existing matching item on the target actor
+    let created;
+    if (_isStackable(entry)) {
+      const existingItem = targetActor.items.find(i => _stashEntryMatches(i.toObject(), itemData));
+      if (existingItem) {
+        const existingQty = foundry.utils.getProperty(existingItem, "system.quantity") ?? 1;
+        await existingItem.update({ "system.quantity": existingQty + takeQty });
+        created = [existingItem];
+      }
+    }
+
+    if (!created) {
+      created = await targetActor.createEmbeddedDocuments("Item", [itemData]);
+    }
     if (!created.length) return null;
 
     const remaining = entryQty - takeQty;
