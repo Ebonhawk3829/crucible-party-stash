@@ -50,6 +50,10 @@
   line-height: 1.2;
 }
 
+.crucible.actor-group .stash-dialog-content {
+  padding: 0.5rem;
+}
+
 /* ─── Tab Panels ─── */
 
 .crucible.actor-group .party-stash-panel {
@@ -242,10 +246,7 @@
   border-radius: 3px;
 }
 
-.crucible.actor-group .party-stash-panel[data-stash-tab="stash"]::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
-}
-
+.crucible.actor-group .party-stash-panel[data-stash-tab="stash"]::-webkit-scrollbar-thumb:hover,
 .crucible.actor-group .stash-list::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.25);
 }

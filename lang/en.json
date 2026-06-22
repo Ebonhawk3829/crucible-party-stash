@@ -23,5 +23,10 @@
   "CRUCIBLE_PARTY_STASH.Quantity": "Qty",
   "CRUCIBLE_PARTY_STASH.MinRole": "Minimum Role for Stash Access",
   "CRUCIBLE_PARTY_STASH.MinRoleHint": "The minimum user role required to see and use the Shared Stash tab on the group sheet. Users below this role will only see the standard Members tab. Gamemasters always have access.",
-  "CRUCIBLE_PARTY_STASH.NoPermission": "You do not have permission to modify the party stash."
-}
+  "CRUCIBLE_PARTY_STASH.NoPermission": "You do not have permission to modify the party stash.",
+  "CRUCIBLE_PARTY_STASH.TemplateError": "The stash panel failed to load. Check your browser console for details.",
+  "CRUCIBLE_PARTY_STASH.ItemRemoved": "{name} removed from stash.",
+  "CRUCIBLE_PARTY_STASH.ItemGiven": "{name} given to {target}.",
+  "CRUCIBLE_PARTY_STASH.ItemMovedTo": "{name} moved to {target}.",
+  "CRUCIBLE_PARTY_STASH.RecipientNotFound": "Recipient not found."
+}}

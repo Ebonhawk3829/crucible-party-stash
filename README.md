@@ -42,7 +42,7 @@ Download `module.zip` from the [latest release](https://github.com/Ebonhawk3829/
 | Requirement | Version |
 |---|---|
 | Foundry VTT | v14+ |
-| Crucible | 0.9.3+ |
+| Crucible | 0.10.0+ |
 
 This module **only** works with the Crucible game system. It hooks into `CrucibleGroupActorSheet` and will not activate for other systems.
 
