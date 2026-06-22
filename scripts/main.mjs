@@ -366,7 +366,7 @@ function _activateStashDropListeners(stashTab, groupActor) {
       }
 
       const s = _getStash(groupActor);
-      const itemData = incomingData; // already toObject()'d above
+      const itemData = foundry.utils.deepClone(incomingData); // clone to avoid mutating the outer reference
 
       // Only attempt merge if the incoming item is stackable
       const mergeIdx = _isStackable(itemData)
