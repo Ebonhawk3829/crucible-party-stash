@@ -44,20 +44,35 @@ function _checkStashCapacity(stash) {
 }
 
 /**
+ * Whether a plain item-data object represents a stackable physical item.
+ * Works on both live Item documents and serialised stash entries.
+ * Mirrors CrucibleItem#isStackable eligibility logic.
+ * @param {object} itemData  item.toObject() or a stash entry
+ * @returns {boolean}
+ */
+function _isStackable(itemData) {
+  const props = itemData.system?.properties;
+  if (!props) return false;
+  // properties may be a Set (live document) or an Array (serialised)
+  const hasStackable = props instanceof Set
+    ? props.has("stackable")
+    : Array.isArray(props) && props.includes("stackable");
+  if (!hasStackable) return false;
+  // Items with ActiveEffects (affixes, enchantments) are never stackable
+  if (itemData.effects?.length) return false;
+  return true;
+}
+
+/**
  * Compare two stash entries for merge eligibility.
+ * Both items must be stackable first; then compares identity after stripping
+ * document-level metadata, matching Crucible's own identity check.
  *
- * Uses a broad-strip approach: removes document-level metadata (_id, _stashId,
- * _stats, sort, ownership) and system.quantity, then deep-compares the
- * remainder. This means any genuine difference in item data (affixes, quality,
- * enchantment tier, broken state, etc.) will prevent a merge — the correct
- * default.
- *
- * MAINTENANCE: The delete list is a maintenance contract. If Crucible adds
- * new persistent fields to item data that are logically irrelevant to identity
- * (timestamps, cache UUIDs, etc.), add them to the delete list here; otherwise
- * items that should merge will silently stop merging.
+ * MAINTENANCE: The delete list mirrors Crucible's isStackable cleanData.
+ * If Crucible adds new fields there, update this list accordingly.
  */
 function _stashEntryMatches(a, b) {
+  if (!_isStackable(a) || !_isStackable(b)) return false;
   const clean = obj => {
     const c = foundry.utils.deepClone(obj);
     delete c._id;
@@ -65,6 +80,7 @@ function _stashEntryMatches(a, b) {
     delete c._stats;
     delete c.sort;
     delete c.ownership;
+    delete c.folder;
     if (c.system) delete c.system.quantity;
     return c;
   };
@@ -296,18 +312,20 @@ function _activateStashDropListeners(stashTab, groupActor) {
 
     // Early capacity check (optimization — avoids dialog if full and no merge possible)
     const currentStash = _readStash(groupActor);
-    if (!_checkStashCapacity(currentStash).ok && !currentStash.some(e => _stashEntryMatches(e, item))) {
+    const incomingData = item.toObject();
+    if (!_checkStashCapacity(currentStash).ok && !currentStash.some(e => _stashEntryMatches(e, incomingData))) {
       ui.notifications.warn(game.i18n.format("CRUCIBLE_PARTY_STASH.StashFull", { capacity: game.settings.get(MODULE_ID, "stashCapacity") }));
       return;
     }
 
     const src = item.parent;
     const srcItemQty = foundry.utils.getProperty(item, "system.quantity") ?? 1;
+    const srcStackable = _isStackable(incomingData);
 
     // ── Quantity / confirm outside lock ──
     let chosenQty = 1;
     if (src instanceof Actor && src.id !== groupActor.id) {
-      if (srcItemQty > 1) {
+      if (srcStackable && srcItemQty > 1) {
         // Always prompt for quantity for stacks — replaces the old confirm dialog
         chosenQty = await _promptQuantity(
           game.i18n.localize("CRUCIBLE_PARTY_STASH.StashQuantity"),
@@ -348,10 +366,12 @@ function _activateStashDropListeners(stashTab, groupActor) {
       }
 
       const s = _getStash(groupActor);
-      const itemData = item.toObject();
+      const itemData = incomingData; // already toObject()'d above
 
-      // Try merge with existing entry
-      const mergeIdx = s.findIndex(e => _stashEntryMatches(e, itemData));
+      // Only attempt merge if the incoming item is stackable
+      const mergeIdx = _isStackable(itemData)
+        ? s.findIndex(e => _stashEntryMatches(e, itemData))
+        : -1;
       if (mergeIdx !== -1) {
         s[mergeIdx].system.quantity = (s[mergeIdx].system.quantity ?? 1) + chosenQty;
         const sheet = groupActor.sheet;
@@ -502,7 +522,11 @@ async function _transferFromStash(groupActor, stashId, targetActor, quantity) {
 
     const itemData = foundry.utils.deepClone(entry);
     delete itemData._stashId;
-    itemData.system.quantity = takeQty;
+    if (!_isStackable(entry)) {
+      itemData.system.quantity = 1; // Safety clamp: Crucible enforces qty ≤ 1 for non-stackable items
+    } else {
+      itemData.system.quantity = takeQty;
+    }
 
     const created = await targetActor.createEmbeddedDocuments("Item", [itemData]);
     if (!created.length) return null;
@@ -534,8 +558,10 @@ async function _initiateTransferToActor(groupActor, stashId, targetActor) {
   if (!entry) return null;
 
   const entryQty = entry.system?.quantity ?? 1;
-  let chosenQty = entryQty;
-  if (entryQty > 1) {
+  // Only prompt for quantity if the item is actually stackable
+  const stackable = _isStackable(entry);
+  let chosenQty = stackable ? entryQty : 1;
+  if (stackable && entryQty > 1) {
     chosenQty = await _promptQuantity(
       game.i18n.localize("CRUCIBLE_PARTY_STASH.TakeQuantity"),
       entryQty,
