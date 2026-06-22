@@ -64,29 +64,21 @@ function _isStackable(itemData) {
 }
 
 /**
+ * Strip Crucible's stacked-item name prefix, e.g. "(2) Alchemist's Fire" → "Alchemist's Fire".
+ * @param {string} name
+ * @returns {string}
+ */
+function _baseItemName(name) {
+  return (name ?? "").replace(/^\(\d+\)\s*/, "");
+}
+
+/**
  * Compare two stash entries for merge eligibility.
- * Both items must be stackable first; then compares identity after stripping
- * document-level metadata, matching Crucible's own identity check.
- *
- * MAINTENANCE: The delete list mirrors Crucible's isStackable cleanData.
- * If Crucible adds new fields there, update this list accordingly.
+ * Both must be stackable and share the same base name (stripped of quantity prefix).
  */
 function _stashEntryMatches(a, b) {
   if (!_isStackable(a) || !_isStackable(b)) return false;
-  return foundry.utils.objectsEqual(_cleanEntryForMerge(a), _cleanEntryForMerge(b));
-}
-
-/** Strip document-level metadata from an entry for identity comparison. */
-function _cleanEntryForMerge(obj) {
-  const c = foundry.utils.deepClone(obj);
-  delete c._id;
-  delete c._stashId;
-  delete c._stats;
-  delete c.sort;
-  delete c.ownership;
-  delete c.folder;
-  if (c.system) delete c.system.quantity;
-  return c;
+  return _baseItemName(a.name) === _baseItemName(b.name);
 }
 
 /**
@@ -390,29 +382,8 @@ function _activateStashDropListeners(stashTab, groupActor) {
       console.log(`${MODULE_ID} | [drop] Merge check: isStackable=${canMerge}, stashEntries=${s.length}`);
       const mergeIdx = canMerge
         ? s.findIndex(e => {
-            const cleanA = _cleanEntryForMerge(e);
-            const cleanB = _cleanEntryForMerge(itemData);
-            const match = foundry.utils.objectsEqual(cleanA, cleanB);
-            if (!match) {
-              // Find first differing key for diagnostics
-              const allKeys = new Set([...Object.keys(cleanA), ...Object.keys(cleanB)]);
-              for (const k of allKeys) {
-                if (!foundry.utils.objectsEqual(cleanA[k], cleanB[k])) {
-                  console.log(`${MODULE_ID} | [drop]   ~ mismatch on key "${k}"`);
-                  if (k === "system") {
-                    const sysKeys = new Set([...Object.keys(cleanA.system ?? {}), ...Object.keys(cleanB.system ?? {})]);
-                    for (const sk of sysKeys) {
-                      if (!foundry.utils.objectsEqual(cleanA.system?.[sk], cleanB.system?.[sk])) {
-                        console.log(`${MODULE_ID} | [drop]   ~   system.${sk} differs`);
-                      }
-                    }
-                  }
-                  break;
-                }
-              }
-            } else {
-              console.log(`${MODULE_ID} | [drop]   ~ match with entry ${e._stashId?.slice(0,8)}`);
-            }
+            const match = _stashEntryMatches(e, itemData);
+            console.log(`${MODULE_ID} | [drop]   ~ "${_baseItemName(e.name)}" vs "${_baseItemName(itemData.name)}": ${match ? "MATCH" : "no match"}`);
             return match;
           })
         : -1;
