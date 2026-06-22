@@ -18,6 +18,7 @@
   "CRUCIBLE_PARTY_STASH.SourceChanged": "The source item changed while the dialog was open. Try again.",
   "CRUCIBLE_PARTY_STASH.SourceRemovalFailed": "<strong>{name}</strong> was added to the stash but could not be removed from its source. Check for duplicates.",
   "CRUCIBLE_PARTY_STASH.InsufficientQuantity": "The source only has {available} remaining.",
+  "CRUCIBLE_PARTY_STASH.ItemAdded": "{name} added to the party stash.",
   "CRUCIBLE_PARTY_STASH.MergedWithStash": "{name} merged with existing stash entry (total: {quantity}).",
   "CRUCIBLE_PARTY_STASH.StashCapacity": "Stash Capacity Limit",
   "CRUCIBLE_PARTY_STASH.StashCapacityHint": "Maximum number of items the party stash can hold (0 = unlimited).",
