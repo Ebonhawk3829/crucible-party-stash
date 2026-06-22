@@ -2,14 +2,26 @@ const MODULE_ID = "crucible-party-stash";
 const TEMPLATE_STASH = `modules/${MODULE_ID}/templates/stash-panel.hbs`;
 
 /* ─── Stash Mutex ───
- * Serializes stash mutations to prevent races from concurrent setFlag calls
- * (double-click, overlapping async operations).
+ * Per-actor serialized lock to prevent races from concurrent setFlag calls
+ * (double-click, overlapping async operations, multiple group sheets).
  */
-let _stashLock = Promise.resolve();
+const _stashLocks = new Map();
 
-function _withStashLock(fn) {
-  _stashLock = _stashLock.then(fn, fn);
-  return _stashLock;
+function _withStashLock(actorId, fn) {
+  if (!_stashLocks.has(actorId)) {
+    _stashLocks.set(actorId, Promise.resolve());
+  }
+  // The chain stored in the map must always settle so the next
+  // queued operation always executes. We use a separate resolver to
+  // decouple the callers's result from the serialization chain.
+  let resolve;
+  const sentinel = new Promise(r => resolve = r);
+  const result = _stashLocks.get(actorId).then(fn).finally(() => resolve());
+  _stashLocks.set(actorId, sentinel);
+  return result.catch(err => {
+    console.error(`${MODULE_ID} | Stash lock error for actor ${actorId}:`, err);
+    throw err;
+  });
 }
 
 /* ─── Utilities ─── */
@@ -29,6 +41,83 @@ async function _setStash(groupActor, stash) {
 function _checkStashCapacity(stash) {
   const max = game.settings.get(MODULE_ID, "stashCapacity");
   return { ok: max === 0 || stash.length < max, max };
+}
+
+/**
+ * Compare two stash entries for merge eligibility.
+ *
+ * Uses a broad-strip approach: removes document-level metadata (_id, _stashId,
+ * _stats, sort, ownership) and system.quantity, then deep-compares the
+ * remainder. This means any genuine difference in item data (affixes, quality,
+ * enchantment tier, broken state, etc.) will prevent a merge — the correct
+ * default.
+ *
+ * MAINTENANCE: The delete list is a maintenance contract. If Crucible adds
+ * new persistent fields to item data that are logically irrelevant to identity
+ * (timestamps, cache UUIDs, etc.), add them to the delete list here; otherwise
+ * items that should merge will silently stop merging.
+ */
+function _stashEntryMatches(a, b) {
+  const clean = obj => {
+    const c = foundry.utils.deepClone(obj);
+    delete c._id;
+    delete c._stashId;
+    delete c._stats;
+    delete c.sort;
+    delete c.ownership;
+    if (c.system) delete c.system.quantity;
+    return c;
+  };
+  return foundry.utils.objectsEqual(clean(a), clean(b));
+}
+
+/**
+ * Prompt the user for a quantity between 1 and max inclusive.
+ * @param {string} label - i18n key for the field label
+ * @param {number} max
+ * @param {string} title - dialog window title
+ * @param {number} [initial=1]
+ * @returns {Promise<number|null>}
+ */
+async function _promptQuantity(label, max, title, initial = 1) {
+  if (max <= 1) return 1;
+
+  const field = new foundry.data.fields.NumberField({
+    label,
+    required: true,
+    min: 1,
+    max,
+    initial: Math.clamp(initial, 1, max),
+    integer: true
+  });
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "stash-dialog-content";
+  wrapper.append(field.toFormGroup({}, { name: "quantity" }));
+  const contentHTML = wrapper.outerHTML;
+
+  try {
+    const qty = await foundry.applications.api.DialogV2.prompt({
+      window: { title, icon: "fa-solid fa-cubes" },
+      content: contentHTML,
+      ok: {
+        label: game.i18n.localize("CRUCIBLE_PARTY_STASH.Give"),
+        icon: "fa-solid fa-check",
+        callback: (event, button) => {
+          const form = button.closest("form") ?? button.closest(".window-content");
+          const input = form?.querySelector("input[name=quantity]");
+          const val = input ? Number(input.value) : null;
+          if (!val || val < 1 || val > max) return null;
+          return val;
+        }
+      },
+      rejectClose: false
+    });
+    return typeof qty === "number" ? qty : null;
+  } catch (err) {
+    console.error(`${MODULE_ID} | _promptQuantity error:`, err);
+    return null;
+  }
 }
 
 /**
@@ -205,50 +294,104 @@ function _activateStashDropListeners(stashTab, groupActor) {
     const item = await Item.implementation.fromDropData(data);
     if (!item) return;
 
-    // Early capacity check (optimization — avoids dialog if full)
-    if (!_checkStashCapacity(_readStash(groupActor)).ok) {
+    // Early capacity check (optimization — avoids dialog if full and no merge possible)
+    const currentStash = _readStash(groupActor);
+    if (!_checkStashCapacity(currentStash).ok && !currentStash.some(e => _stashEntryMatches(e, item))) {
       ui.notifications.warn(game.i18n.format("CRUCIBLE_PARTY_STASH.StashFull", { capacity: game.settings.get(MODULE_ID, "stashCapacity") }));
       return;
     }
 
     const src = item.parent;
-    let shouldDelete = false;
+    const srcItemQty = foundry.utils.getProperty(item, "system.quantity") ?? 1;
 
+    // ── Quantity / confirm outside lock ──
+    let chosenQty = 1;
     if (src instanceof Actor && src.id !== groupActor.id) {
-      if (game.settings.get(MODULE_ID, "confirmTransfer")) {
+      if (srcItemQty > 1) {
+        // Always prompt for quantity for stacks — replaces the old confirm dialog
+        chosenQty = await _promptQuantity(
+          game.i18n.localize("CRUCIBLE_PARTY_STASH.StashQuantity"),
+          srcItemQty,
+          game.i18n.localize("CRUCIBLE_PARTY_STASH.MoveToStash"),
+          1
+        );
+        if (!chosenQty) return;
+      } else if (game.settings.get(MODULE_ID, "confirmTransfer")) {
+        // Single item: gate on confirmTransfer as before, no Copy Only
         try {
-          shouldDelete = await foundry.applications.api.DialogV2.confirm({
+          const confirmed = await foundry.applications.api.DialogV2.confirm({
             window: { title: game.i18n.localize("CRUCIBLE_PARTY_STASH.MoveToStash") },
             content: `<p>${game.i18n.format("CRUCIBLE_PARTY_STASH.MoveConfirm", { name: item.name, actor: src.name })}</p>`,
             yes: { label: game.i18n.localize("CRUCIBLE_PARTY_STASH.Move"), icon: "fa-solid fa-box-open" },
-            no: { label: game.i18n.localize("CRUCIBLE_PARTY_STASH.CopyOnly"), icon: "fa-solid fa-copy" }
+            no: { label: game.i18n.localize("CRUCIBLE_PARTY_STASH.Cancel"), icon: "fa-solid fa-ban" }
           });
+          if (!confirmed) return;
         } catch { return; }
-      } else {
-        shouldDelete = true;
-      }
-      if (shouldDelete) {
-        await src.deleteEmbeddedDocuments("Item", [item.id]);
       }
     }
 
-    // Mutate stash under lock to prevent races with concurrent remove/give
-    const name = await _withStashLock(async () => {
+      // ── Stash mutation under lock ──
+    const result = await _withStashLock(groupActor.id, async () => {
+      // Re-validate source — it may have changed while dialogs were open
+      const currentSrc = src instanceof Actor ? game.actors.get(src.id) : null;
+      if (currentSrc) {
+        const currentItem = currentSrc.items.get(item.id);
+        if (!currentItem) {
+          ui.notifications.warn(game.i18n.localize("CRUCIBLE_PARTY_STASH.SourceChanged"));
+          return null;
+        }
+        const currentQty = foundry.utils.getProperty(currentItem, "system.quantity") ?? 1;
+        if (currentQty < chosenQty) {
+          ui.notifications.warn(game.i18n.format("CRUCIBLE_PARTY_STASH.InsufficientQuantity", { available: currentQty }));
+          return null;
+        }
+      }
+
       const s = _getStash(groupActor);
+      const itemData = item.toObject();
+
+      // Try merge with existing entry
+      const mergeIdx = s.findIndex(e => _stashEntryMatches(e, itemData));
+      if (mergeIdx !== -1) {
+        s[mergeIdx].system.quantity = (s[mergeIdx].system.quantity ?? 1) + chosenQty;
+        const sheet = groupActor.sheet;
+        if (sheet) sheet._stashActiveTab = "stash";
+        await _setStash(groupActor, s);
+        return { name: item.name, merged: true, totalQty: s[mergeIdx].system.quantity };
+      }
+
+      // No merge — check capacity
       const cap = _checkStashCapacity(s);
       if (!cap.ok) {
         ui.notifications.warn(game.i18n.format("CRUCIBLE_PARTY_STASH.StashFull", { capacity: cap.max }));
         return null;
       }
-      const itemData = item.toObject();
+
       itemData._stashId = foundry.utils.randomID();
+      itemData.system.quantity = chosenQty;
       s.push(itemData);
       const sheet = groupActor.sheet;
       if (sheet) sheet._stashActiveTab = "stash";
       await _setStash(groupActor, s);
-      return item.name;
+      return { name: item.name, merged: false };
     });
-    if (name) ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.ItemAdded", { name }));
+
+    if (!result) return;
+
+    // ── Source-side mutation: only after stash write succeeds ──
+    if (src instanceof Actor && src.id !== groupActor.id) {
+      if (chosenQty < srcItemQty) {
+        await src.updateEmbeddedDocuments("Item", [{ _id: item.id, "system.quantity": srcItemQty - chosenQty }]);
+      } else {
+        await src.deleteEmbeddedDocuments("Item", [item.id]);
+      }
+    }
+
+    if (result.merged) {
+      ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.MergedWithStash", { name: result.name, quantity: result.totalQty }));
+    } else {
+      ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.ItemAdded", { name: result.name }));
+    }
   });
 }
 
@@ -272,12 +415,14 @@ function _activateStashActionListeners(stashTab, groupActor) {
     ev.stopPropagation();
 
     const action = el.dataset.stashAction;
-    const index = Number(el.dataset.index);
+    const stashId = el.dataset.stashId;
 
     if (action === "remove") {
-      const removed = await _withStashLock(async () => {
+      const removed = await _withStashLock(groupActor.id, async () => {
         const s = _getStash(groupActor);
-        const [item] = s.splice(index, 1);
+        const idx = s.findIndex(e => e._stashId === stashId);
+        if (idx === -1) return null;
+        const [item] = s.splice(idx, 1);
         const sheet = groupActor.sheet;
         if (sheet) sheet._stashActiveTab = "stash";
         await _setStash(groupActor, s);
@@ -308,7 +453,7 @@ function _activateStashActionListeners(stashTab, groupActor) {
       const target = game.actors.get(recipient);
       if (!target) { ui.notifications.error(game.i18n.localize("CRUCIBLE_PARTY_STASH.RecipientNotFound")); return; }
 
-      const name = await _transferFromStash(groupActor, index, target);
+      const name = await _initiateTransferToActor(groupActor, stashId, target);
       if (name) ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.ItemGiven", { name, target: target.name }));
     }
   });
@@ -320,44 +465,87 @@ function _activateStashActionListeners(stashTab, groupActor) {
       ev.preventDefault();
       return;
     }
-    const li = ev.target.closest(".stash-item[data-index]");
+    const li = ev.target.closest(".stash-item[data-stash-id]");
     if (!li) return;
-    const index = Number(li.dataset.index);
+    const stashId = li.dataset.stashId;
     const stash = _readStash(groupActor);
-    const itemData = stash[index];
+    const itemData = stash.find(e => e._stashId === stashId);
     if (!itemData) return;
     ev.dataTransfer.setData("text/plain", JSON.stringify({
       type: "Item",
       data: itemData,
       fromStash: true,
-      stashIndex: index,
+      stashId,
       groupActorId: groupActor.id
     }));
   });
 }
 
-/* ─── Transfer: stash → character ─── */
+/* ─── Transfer: stash → character ───
+ * @param {Actor} groupActor
+ * @param {string} stashId
+ * @param {Actor} targetActor
+ * @param {number} [quantity] - optional quantity to take; omitted = full entry
+ * @returns {Promise<string|null>} item name on success
+ */
 
-async function _transferFromStash(groupActor, stashIndex, targetActor) {
-  return _withStashLock(async () => {
+async function _transferFromStash(groupActor, stashId, targetActor, quantity) {
+  return _withStashLock(groupActor.id, async () => {
     const stash = _getStash(groupActor);
-    const itemData = stash[stashIndex];
-    if (!itemData) return null;
+    const entryIdx = stash.findIndex(e => e._stashId === stashId);
+    if (entryIdx === -1) return null;
+    const entry = stash[entryIdx];
 
-    const cleanData = foundry.utils.deepClone(itemData);
-    delete cleanData._id;
-    delete cleanData._stashId;
+    const entryQty = entry.system?.quantity ?? 1;
+    const takeQty = (quantity !== undefined) ? Math.min(quantity, entryQty) : entryQty;
+    if (takeQty <= 0) return null;
 
-    const created = await targetActor.createEmbeddedDocuments("Item", [cleanData]);
+    const itemData = foundry.utils.deepClone(entry);
+    delete itemData._stashId;
+    itemData.system.quantity = takeQty;
+
+    const created = await targetActor.createEmbeddedDocuments("Item", [itemData]);
     if (!created.length) return null;
 
-    stash.splice(stashIndex, 1);
+    const remaining = entryQty - takeQty;
+    if (remaining > 0) {
+      entry.system.quantity = remaining;
+    } else {
+      stash.splice(entryIdx, 1);
+    }
     const sheet = groupActor.sheet;
     if (sheet) sheet._stashActiveTab = "stash";
     await _setStash(groupActor, stash);
 
-    return itemData.name;
+    return entry.name;
   });
+}
+
+/* ─── Initiate transfer with quantity prompt ───
+ * Reads the stash entry, prompts for quantity if stackable,
+ * then delegates to _transferFromStash. All user-facing dialogs
+ * happen outside the lock.
+ */
+
+async function _initiateTransferToActor(groupActor, stashId, targetActor) {
+  // Read outside lock for dialog — entry snapshot may be stale, validated inside lock
+  const stash = _readStash(groupActor);
+  const entry = stash.find(e => e._stashId === stashId);
+  if (!entry) return null;
+
+  const entryQty = entry.system?.quantity ?? 1;
+  let chosenQty = entryQty;
+  if (entryQty > 1) {
+    chosenQty = await _promptQuantity(
+      game.i18n.localize("CRUCIBLE_PARTY_STASH.TakeQuantity"),
+      entryQty,
+      game.i18n.localize("CRUCIBLE_PARTY_STASH.GiveItem"),
+      entryQty
+    );
+    if (!chosenQty) return null;
+  }
+
+  return _transferFromStash(groupActor, stashId, targetActor, chosenQty);
 }
 
 /* ─── Recipient picker dialog ─── */
@@ -405,7 +593,8 @@ Hooks.on("dropActorSheetData", async (targetActor, sheet, data) => {
   if (!data?.fromStash || data.groupActorId === targetActor.id) return;
   const groupActor = game.actors.get(data.groupActorId);
   if (!groupActor) return;
-  const name = await _transferFromStash(groupActor, data.stashIndex, targetActor);
+
+  const name = await _initiateTransferToActor(groupActor, data.stashId, targetActor);
   if (name) ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.ItemMovedTo", { name, target: targetActor.name }));
 });
 
@@ -432,7 +621,7 @@ function _setupHeroDropInterception(app, element) {
     const groupActor = game.actors.get(data.groupActorId);
     if (!groupActor) return;
 
-    const name = await _transferFromStash(groupActor, data.stashIndex, app.actor);
+    const name = await _initiateTransferToActor(groupActor, data.stashId, app.actor);
     if (name) ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.ItemMovedTo", { name, target: app.actor.name }));
   }, true);
 }

@@ -15,9 +15,11 @@ Adds a **Stash** tab to the Group Actor sheet where players can pool items, dist
 
 - **Shared Stash Tab** — A new tab on the Crucible Group Actor sheet for pooling party items alongside the existing Members tab.
 - **Drag & Drop** — Drag items from any character sheet into the stash, or drag them back out to a character.
+- **Split on Deposit** — When stashing a stacked item (e.g. 5 Healing Potions), choose how many to stash. The source keeps the remainder.
+- **Split on Withdrawal** — When giving or dragging a stashed stack to a character, choose how many to take. Remainder stays in the stash.
+- **Auto-Merge** — Stashing an item that matches an existing stash entry (same type, affixes, quality) increments the existing entry's quantity instead of creating a duplicate.
 - **Give to Character** — Click the give button to hand an item directly to any party member via a dropdown picker.
-- **Move or Copy** — Optionally remove the item from the source character when stashing, or keep a copy on both.
-- **Capacity Limit** — Set a maximum number of items the stash can hold (0 = unlimited).
+- **Capacity Limit** — Set a maximum number of stash slots the stash can hold (0 = unlimited). Merged entries reuse existing slots.
 - **Role-Based Access** — Configure the minimum user role required to see and use the stash. GMs always have access.
 - **Quantity Display** — Shows item quantities for stackable Crucible items.
 
@@ -52,16 +54,17 @@ All settings are world-scoped and configurable by the GM under **Settings** → 
 
 | Setting | Default | Description |
 |---|---|---|
-| Stash Capacity | 0 (unlimited) | Maximum number of items the stash can hold. Set to 0 for no limit. |
-| Confirm Transfer | Enabled | Prompt the user to confirm whether to move or copy when dragging an item from a character into the stash. |
+| Stash Capacity | 0 (unlimited) | Maximum number of stash slots. Merged entries reuse existing slots. Set to 0 for no limit. |
+| Confirm Transfer | Enabled | For single items, show a confirmation dialog when moving to the stash. For stacks, a quantity prompt is always shown regardless of this setting. |
 | Minimum Role | Player | The minimum user role required to see and interact with the stash tab. |
 
 ## Usage
 
 1. **Open a Group Actor sheet** — the module adds a tab bar with **Members** and **Stash** tabs.
-2. **Add items** — Drag an item from any Hero or Adversary character sheet onto the Stash tab.
-3. **Retrieve items** — Either drag an item from the stash onto a character sheet, or click the give button and pick a party member from the list.
-4. **Remove items** — Click the trash icon to delete an item from the stash entirely.
+2. **Add items** — Drag an item from any Hero or Adversary character sheet onto the Stash tab. For stacked items (qty > 1), a dialog lets you choose how many to stash.
+3. **Retrieve items** — Either drag an item from the stash onto a character sheet, or click the give button and pick a party member from the list. For stacked items, a dialog lets you choose how many to take.
+4. **Auto-merge** — Stashing an item that matches an existing stash entry (same affixes, quality, etc.) automatically increments the existing entry's quantity.
+5. **Remove items** — Click the trash icon to delete an item from the stash entirely.
 
 ## Compatibility
 

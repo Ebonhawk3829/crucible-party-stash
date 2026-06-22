@@ -8,7 +8,7 @@
   <p class="hint">{{localize "CRUCIBLE_PARTY_STASH.DragHintStash"}}</p>
   <ol class="items-list stash-list scrollable">
     {{#each items}}
-    <li class="stash-item line-item" data-index="{{@index}}" data-item-id="{{this._id}}" draggable="true">
+    <li class="stash-item line-item" data-stash-id="{{this._stashId}}" draggable="true">
       <img class="icon" src="{{this.img}}" alt="{{this.name}}" width="32" height="32">
       <div class="title">
         <h4>{{this.name}}</h4>
@@ -19,11 +19,11 @@
       </div>
       {{#if ../isEditable}}
       <div class="controls">
-        <a class="control" data-stash-action="give" data-index="{{@index}}"
+        <a class="control" data-stash-action="give" data-stash-id="{{this._stashId}}"
            data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.GiveToCharacter"}}">
           <i class="fa-solid fa-hand-holding"></i>
         </a>
-        <a class="control" data-stash-action="remove" data-index="{{@index}}"
+        <a class="control" data-stash-action="remove" data-stash-id="{{this._stashId}}"
            data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.RemoveFromStash"}}">
           <i class="fa-solid fa-trash"></i>
         </a>
