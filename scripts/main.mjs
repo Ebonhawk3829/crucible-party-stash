@@ -113,7 +113,6 @@ async function _promptQuantity(label, max, title, initial = 1) {
         callback: (event, button) => {
           const input = document.getElementById(qtyId);
           const val = input ? Number(input.value) : null;
-          console.log(`${MODULE_ID} | [_promptQuantity] id=${qtyId}, input=${!!input}, val=${val}, max=${max}`);
           if (!val || val < 1 || val > max) return null;
           return val;
         }
@@ -200,7 +199,6 @@ Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options)
   const actor = app.actor;
   if (!actor || actor.type !== "group") return;
 
-  // ── permission gate ──
   if (!canUseStash()) return;
 
   const windowContent = element.querySelector(".window-content");
@@ -210,7 +208,6 @@ Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options)
   const stashItems = _getStash(actor);
   const activeTab = app._stashActiveTab || "members";
 
-  // Build tab bar
   const tabBar = document.createElement("nav");
   tabBar.className = "party-stash-tabs";
   tabBar.innerHTML = `
@@ -225,7 +222,6 @@ Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options)
     </a>
   `;
 
-  // Capture original sheet children into the members panel
   const originalChildren = Array.from(windowContent.childNodes);
 
   const membersTab = document.createElement("div");
@@ -235,7 +231,6 @@ Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options)
     membersTab.appendChild(child);
   }
 
-  // Stash tab
   const stashTab = document.createElement("div");
   stashTab.className = `party-stash-panel ${activeTab === "stash" ? "active" : ""}`;
   stashTab.dataset.stashTab = "stash";
@@ -298,16 +293,12 @@ function _activateStashDropListeners(stashTab, groupActor) {
     try { data = JSON.parse(ev.dataTransfer.getData("text/plain")); } catch { return; }
     if (data.type !== "Item" || data.fromStash) return;
 
-    console.log(`${MODULE_ID} | [drop] Drop data received`, { name: data.data?.name, type: data.type });
-
     const item = await Item.implementation.fromDropData(data);
-    if (!item) { console.log(`${MODULE_ID} | [drop] fromDropData returned null`); return; }
-    console.log(`${MODULE_ID} | [drop] Item resolved`, { name: item.name, id: item.id, parent: item.parent?.name, qty: item.system?.quantity });
+    if (!item) return;
 
-    // Early capacity check (optimization — avoids dialog if full and no merge possible)
+    // Early capacity check — avoids dialog if full and no merge possible
     const currentStash = _readStash(groupActor);
     const incomingData = item.toObject();
-    console.log(`${MODULE_ID} | [drop] Stash size ${currentStash.length}, capacity check`, _checkStashCapacity(currentStash));
     if (!_checkStashCapacity(currentStash).ok && !currentStash.some(e => _stashEntryMatches(e, incomingData))) {
       ui.notifications.warn(game.i18n.format("CRUCIBLE_PARTY_STASH.StashFull", { capacity: game.settings.get(MODULE_ID, "stashCapacity") }));
       return;
@@ -316,13 +307,11 @@ function _activateStashDropListeners(stashTab, groupActor) {
     const src = item.parent;
     const srcItemQty = foundry.utils.getProperty(item, "system.quantity") ?? 1;
     const srcStackable = _isStackable(incomingData);
-    console.log(`${MODULE_ID} | [drop] Source`, { actor: src?.name, id: src?.id, qty: srcItemQty, stackable: srcStackable, props: incomingData.system?.properties, effects: incomingData.effects?.length });
 
     // ── Quantity / confirm outside lock ──
     let chosenQty = 1;
     if (src instanceof Actor && src.id !== groupActor.id) {
       if (srcStackable && srcItemQty > 1) {
-        // Always prompt for quantity for stacks — replaces the old confirm dialog
         chosenQty = await _promptQuantity(
           game.i18n.localize("CRUCIBLE_PARTY_STASH.StashQuantity"),
           srcItemQty,
@@ -331,8 +320,6 @@ function _activateStashDropListeners(stashTab, groupActor) {
         );
         if (!chosenQty) return;
       } else if (game.settings.get(MODULE_ID, "confirmTransfer")) {
-        console.log(`${MODULE_ID} | [drop] Single item, confirmTransfer ON`);
-        // Single item: gate on confirmTransfer as before, no Copy Only
         try {
           const confirmed = await foundry.applications.api.DialogV2.confirm({
             window: { title: game.i18n.localize("CRUCIBLE_PARTY_STASH.MoveToStash") },
@@ -342,53 +329,33 @@ function _activateStashDropListeners(stashTab, groupActor) {
           });
           if (!confirmed) return;
         } catch { return; }
-      } else {
-        console.log(`${MODULE_ID} | [drop] Single item, confirmTransfer OFF — auto-move`);
       }
-    } else {
-      console.log(`${MODULE_ID} | [drop] No source actor (compendium?) or same as group — copy only`);
     }
 
-    console.log(`${MODULE_ID} | [drop] Chosen quantity: ${chosenQty}, entering lock`);
-
-      // ── Stash mutation under lock ──
+    // ── Stash mutation under lock ──
     const result = await _withStashLock(groupActor.id, async () => {
-      console.log(`${MODULE_ID} | [drop] Inside lock, re-validating source`);
       // Re-validate source — it may have changed while dialogs were open
       const currentSrc = src instanceof Actor ? game.actors.get(src.id) : null;
       if (currentSrc) {
         const currentItem = currentSrc.items.get(item.id);
         if (!currentItem) {
-          console.log(`${MODULE_ID} | [drop] Source validation FAILED — item ${item.id} no longer exists on ${currentSrc.name}`);
           ui.notifications.warn(game.i18n.localize("CRUCIBLE_PARTY_STASH.SourceChanged"));
           return null;
         }
         const currentQty = foundry.utils.getProperty(currentItem, "system.quantity") ?? 1;
         if (currentQty < chosenQty) {
-          console.log(`${MODULE_ID} | [drop] Source validation FAILED — qty ${currentQty} < chosen ${chosenQty}`);
           ui.notifications.warn(game.i18n.format("CRUCIBLE_PARTY_STASH.InsufficientQuantity", { available: currentQty }));
           return null;
         }
-        console.log(`${MODULE_ID} | [drop] Source validated: ${currentItem.name} qty=${currentQty}`);
-      } else {
-        console.log(`${MODULE_ID} | [drop] No source actor to validate — compendium drop`);
       }
 
       const s = _getStash(groupActor);
       const itemData = foundry.utils.deepClone(incomingData);
 
-      // Only attempt merge if the incoming item is stackable
-      const canMerge = _isStackable(itemData);
-      console.log(`${MODULE_ID} | [drop] Merge check: isStackable=${canMerge}, stashEntries=${s.length}`);
-      const mergeIdx = canMerge
-        ? s.findIndex(e => {
-            const match = _stashEntryMatches(e, itemData);
-            console.log(`${MODULE_ID} | [drop]   ~ "${_baseItemName(e.name)}" vs "${_baseItemName(itemData.name)}": ${match ? "MATCH" : "no match"}`);
-            return match;
-          })
+      const mergeIdx = _isStackable(itemData)
+        ? s.findIndex(e => _stashEntryMatches(e, itemData))
         : -1;
       if (mergeIdx !== -1) {
-        console.log(`${MODULE_ID} | [drop] Merging with entry ${mergeIdx}, current qty=${s[mergeIdx].system.quantity ?? 1}, adding ${chosenQty}`);
         s[mergeIdx].system.quantity = (s[mergeIdx].system.quantity ?? 1) + chosenQty;
         const sheet = groupActor.sheet;
         if (sheet) sheet._stashActiveTab = "stash";
@@ -396,35 +363,28 @@ function _activateStashDropListeners(stashTab, groupActor) {
         return { name: item.name, merged: true, totalQty: s[mergeIdx].system.quantity };
       }
 
-      // No merge — check capacity
       const cap = _checkStashCapacity(s);
       if (!cap.ok) {
-        console.log(`${MODULE_ID} | [drop] Capacity full (${s.length}/${cap.max}), cannot push`);
         ui.notifications.warn(game.i18n.format("CRUCIBLE_PARTY_STASH.StashFull", { capacity: cap.max }));
         return null;
       }
 
-      console.log(`${MODULE_ID} | [drop] Pushing new entry, qty=${chosenQty}`);
       itemData._stashId = foundry.utils.randomID();
       itemData.system.quantity = chosenQty;
       s.push(itemData);
       const sheet = groupActor.sheet;
       if (sheet) sheet._stashActiveTab = "stash";
       await _setStash(groupActor, s);
-      console.log(`${MODULE_ID} | [drop] Stash written, new entry ${itemData._stashId?.slice(0,8)}, stash size now ${s.length}`);
       return { name: item.name, merged: false };
     });
 
-    if (!result) { console.log(`${MODULE_ID} | [drop] Lock returned null — aborting`); return; }
-    console.log(`${MODULE_ID} | [drop] Lock succeeded`, result);
+    if (!result) return;
 
     // ── Source-side mutation: only after stash write succeeds ──
     if (src instanceof Actor && src.id !== groupActor.id) {
       if (chosenQty < srcItemQty) {
-        console.log(`${MODULE_ID} | [drop] Reducing source qty from ${srcItemQty} to ${srcItemQty - chosenQty}`);
         await src.updateEmbeddedDocuments("Item", [{ _id: item.id, "system.quantity": srcItemQty - chosenQty }]);
       } else {
-        console.log(`${MODULE_ID} | [drop] Deleting source item ${item.id} from ${src.name}`);
         await src.deleteEmbeddedDocuments("Item", [item.id]);
       }
     }
@@ -500,9 +460,7 @@ function _activateStashActionListeners(stashTab, groupActor) {
     }
   });
 
-  // Drag items OUT of the stash
   stashTab.addEventListener("dragstart", (ev) => {
-    // Don't let control buttons (give/remove) trigger a drag
     if (ev.target.closest("[data-stash-action]")) {
       ev.preventDefault();
       return;
@@ -593,7 +551,6 @@ async function _initiateTransferToActor(groupActor, stashId, targetActor) {
   if (!entry) return null;
 
   const entryQty = entry.system?.quantity ?? 1;
-  // Only prompt for quantity if the item is actually stackable
   const stackable = _isStackable(entry);
   let chosenQty = stackable ? entryQty : 1;
   if (stackable && entryQty > 1) {
@@ -636,7 +593,6 @@ async function _pickRecipient(choices) {
         icon: "fa-solid fa-check",
         callback: (event, button) => {
           const select = document.getElementById(recipId);
-          console.log(`${MODULE_ID} | [_pickRecipient] id=${recipId}, select=${!!select}, val=${select?.value}`);
           return select?.value || null;
         }
       },
