@@ -12,7 +12,7 @@
       <img class="icon" src="{{this.img}}" alt="{{this.name}}" width="32" height="32">
       <div class="title">
         <h4>{{this.name}}</h4>
-        <span class="tag">{{this.type}}</span>
+        <span class="tag">{{this.typeLabel}}</span>
         {{#if this.system.quantity}}
           <span class="tag">{{localize "CRUCIBLE_PARTY_STASH.Quantity"}}: {{this.system.quantity}}</span>
         {{/if}}
@@ -20,11 +20,13 @@
       {{#if ../isEditable}}
       <div class="controls">
         <a class="control" data-stash-action="give" data-stash-id="{{this._stashId}}"
-           data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.GiveToCharacter"}}">
+           data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.GiveToCharacter"}}"
+           aria-label="{{localize "CRUCIBLE_PARTY_STASH.GiveToCharacter"}}">
           <i class="fa-solid fa-hand-holding"></i>
         </a>
         <a class="control" data-stash-action="remove" data-stash-id="{{this._stashId}}"
-           data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.RemoveFromStash"}}">
+           data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.RemoveFromStash"}}"
+           aria-label="{{localize "CRUCIBLE_PARTY_STASH.RemoveFromStash"}}">
           <i class="fa-solid fa-trash"></i>
         </a>
       </div>

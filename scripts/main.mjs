@@ -7,6 +7,10 @@ const TEMPLATE_STASH = `modules/${MODULE_ID}/templates/stash-panel.hbs`;
  */
 const _stashLocks = new Map();
 
+/* Prevent double-fire when both the capturing drop listener and
+ * dropActorSheetData hook process the same stash→hero drag. */
+const _handledStashDrops = new Set();
+
 function _withStashLock(actorId, fn) {
   if (!_stashLocks.has(actorId)) {
     _stashLocks.set(actorId, Promise.resolve());
@@ -27,7 +31,18 @@ function _withStashLock(actorId, fn) {
 /* ─── Utilities ─── */
 
 function _readStash(groupActor) {
-  return groupActor.getFlag(MODULE_ID, "stash") ?? [];
+  const raw = groupActor.getFlag(MODULE_ID, "stash") ?? [];
+  if (!Array.isArray(raw)) {
+    console.warn(`${MODULE_ID} | Stash flag is not an array — resetting`);
+    return [];
+  }
+  return raw.filter(entry => {
+    if (!entry || typeof entry !== "object" || !entry.name || !entry.type || !entry._stashId) {
+      console.warn(`${MODULE_ID} | Filtering malformed stash entry:`, entry);
+      return false;
+    }
+    return true;
+  });
 }
 
 function _getStash(groupActor) {
@@ -176,10 +191,16 @@ Hooks.once("init", async () => {
 /* ─── Render the stash panel HTML ─── */
 
 async function _renderStashHTML(items, isEditable) {
+  const localized = items.map(item => ({
+    ...item,
+    typeLabel: CONFIG.Item.typeLabels?.[item.type]
+      ? game.i18n.localize(CONFIG.Item.typeLabels[item.type])
+      : item.type
+  }));
   try {
     return await foundry.applications.handlebars.renderTemplate(
       TEMPLATE_STASH,
-      { items, isEmpty: items.length === 0, isEditable }
+      { items: localized, isEmpty: items.length === 0, isEditable }
     );
   } catch (err) {
     console.error(`${MODULE_ID} | Template render failed`, err);
@@ -193,7 +214,16 @@ async function _renderStashHTML(items, isEditable) {
  *
  * CrucibleGroupActorSheet uses root: true on its single PARTS entry, so Foundry
  * places children directly inside .window-content rather than a .sheet-body wrapper.
- * We target .window-content accordingly. */
+ * We target .window-content accordingly.
+ *
+ * Why full rebuild instead of in-place update:
+ * - First render: no .party-stash-tabs exists → full injection needed.
+ * - Re-render after Crucible replaces .window-content innerHTML wholesale
+ *   (which it does on full re-renders): our structure is gone → full rebuild.
+ * - Light re-render where DOM is intact: could theoretically update in-place,
+ *   but there's no reliable way to detect "my structure is still intact" without
+ *   doing essentially the same amount of work as rebuilding. The rebuild cost
+ *   for a group sheet that renders infrequently is negligible. */
 
 Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options) => {
   const actor = app.actor;
@@ -382,10 +412,15 @@ function _activateStashDropListeners(stashTab, groupActor) {
 
     // ── Source-side mutation: only after stash write succeeds ──
     if (src instanceof Actor && src.id !== groupActor.id) {
-      if (chosenQty < srcItemQty) {
-        await src.updateEmbeddedDocuments("Item", [{ _id: item.id, "system.quantity": srcItemQty - chosenQty }]);
-      } else {
-        await src.deleteEmbeddedDocuments("Item", [item.id]);
+      try {
+        if (chosenQty < srcItemQty) {
+          await src.updateEmbeddedDocuments("Item", [{ _id: item.id, "system.quantity": srcItemQty - chosenQty }]);
+        } else {
+          await src.deleteEmbeddedDocuments("Item", [item.id]);
+        }
+      } catch (err) {
+        console.error(`${MODULE_ID} | Failed to remove item from source after stash write`, err);
+        ui.notifications.error(game.i18n.format("CRUCIBLE_PARTY_STASH.SourceRemovalFailed", { name: item.name }));
       }
     }
 
@@ -437,10 +472,11 @@ function _activateStashActionListeners(stashTab, groupActor) {
     if (action === "give") {
       const memberArray = groupActor.system.members ?? [];
 
-      // Crucible attaches an `actors` Set of resolved Actor instances on the members array
+      // Crucible's group member schema uses `actorId` as the reference field;
+      // `memberArray.actors` is a runtime Set of resolved Actor instances.
       const actors = memberArray.actors
         ? Array.from(memberArray.actors)
-        : Array.from(memberArray).map(m => game.actors.get(m.actorId ?? m.id ?? m._id)).filter(Boolean);
+        : Array.from(memberArray).map(m => game.actors.get(m.actorId ?? m.id)).filter(Boolean);
 
       if (!actors.length) {
         ui.notifications.warn(game.i18n.localize("CRUCIBLE_PARTY_STASH.NoMembers"));
@@ -608,6 +644,7 @@ async function _pickRecipient(choices) {
 
 Hooks.on("dropActorSheetData", async (targetActor, sheet, data) => {
   if (!data?.fromStash || data.groupActorId === targetActor.id) return;
+  if (_handledStashDrops.has(data.stashId)) return;
   const groupActor = game.actors.get(data.groupActorId);
   if (!groupActor) return;
 
@@ -634,6 +671,10 @@ function _setupHeroDropInterception(app, element) {
 
     ev.preventDefault();
     ev.stopPropagation();
+
+    // Prevent dropActorSheetData from also processing this drop
+    _handledStashDrops.add(data.stashId);
+    queueMicrotask(() => _handledStashDrops.delete(data.stashId));
 
     const groupActor = game.actors.get(data.groupActorId);
     if (!groupActor) return;

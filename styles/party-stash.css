@@ -233,6 +233,11 @@
 
 /* ─── Scrollbar ─── */
 
+.crucible.actor-group .party-stash-panel[data-stash-tab="stash"] {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
 .crucible.actor-group .party-stash-panel[data-stash-tab="stash"]::-webkit-scrollbar {
   width: 6px;
 }
