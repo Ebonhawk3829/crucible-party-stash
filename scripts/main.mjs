@@ -119,8 +119,9 @@ async function _promptQuantity(label, max, title, initial = 1) {
       ok: {
         label: game.i18n.localize("CRUCIBLE_PARTY_STASH.Give"),
         icon: "fa-solid fa-check",
-        callback: (event, button, html) => {
-          const input = html?.querySelector("input[name=quantity]");
+        callback: (event, button) => {
+          const dialog = button.closest(".window-app");
+          const input = dialog?.querySelector("input[name=quantity]");
           const val = input ? Number(input.value) : null;
           console.log(`${MODULE_ID} | [_promptQuantity] callback val=${val}, input=${!!input}, max=${max}`);
           if (!val || val < 1 || val > max) return null;
@@ -626,8 +627,9 @@ async function _pickRecipient(choices) {
       ok: {
         label: game.i18n.localize("CRUCIBLE_PARTY_STASH.Give"),
         icon: "fa-solid fa-check",
-        callback: (event, button, html) => {
-          const select = html?.querySelector("select[name=recipient]");
+        callback: (event, button) => {
+          const dialog = button.closest(".window-app");
+          const select = dialog?.querySelector("select[name=recipient]");
           console.log(`${MODULE_ID} | [_pickRecipient] callback val=${select?.value}`);
           return select?.value || null;
         }
