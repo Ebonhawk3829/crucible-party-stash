@@ -98,19 +98,16 @@ function _stashEntryMatches(a, b) {
 async function _promptQuantity(label, max, title, initial = 1) {
   if (max <= 1) return 1;
 
-  const field = new foundry.data.fields.NumberField({
-    label,
-    required: true,
-    min: 1,
-    max,
-    initial: Math.clamp(initial, 1, max),
-    integer: true
-  });
-
-  const wrapper = document.createElement("div");
-  wrapper.className = "stash-dialog-content";
-  wrapper.append(field.toFormGroup({}, { name: "quantity" }));
-  const contentHTML = wrapper.outerHTML;
+  // Unique ID per dialog instance to find the input regardless of DOM structure
+  const qtyId = `stash-qty-${foundry.utils.randomID()}`;
+  const contentHTML = `<div class="stash-dialog-content">
+    <div class="form-group">
+      <label>${label}</label>
+      <div class="form-fields">
+        <input id="${qtyId}" type="number" name="quantity" min="1" max="${max}" value="${Math.clamp(initial, 1, max)}" autofocus>
+      </div>
+    </div>
+  </div>`;
 
   try {
     const qty = await foundry.applications.api.DialogV2.prompt({
@@ -120,10 +117,9 @@ async function _promptQuantity(label, max, title, initial = 1) {
         label: game.i18n.localize("CRUCIBLE_PARTY_STASH.Give"),
         icon: "fa-solid fa-check",
         callback: (event, button) => {
-          const dialog = button.closest(".window-app");
-          const input = dialog?.querySelector("input[name=quantity]");
+          const input = document.getElementById(qtyId);
           const val = input ? Number(input.value) : null;
-          console.log(`${MODULE_ID} | [_promptQuantity] callback val=${val}, input=${!!input}, max=${max}`);
+          console.log(`${MODULE_ID} | [_promptQuantity] id=${qtyId}, input=${!!input}, val=${val}, max=${max}`);
           if (!val || val < 1 || val > max) return null;
           return val;
         }
@@ -605,17 +601,17 @@ async function _initiateTransferToActor(groupActor, stashId, targetActor) {
 /* ─── Recipient picker dialog ─── */
 
 async function _pickRecipient(choices) {
-  const field = new foundry.data.fields.StringField({
-    label: game.i18n.localize("CRUCIBLE_PARTY_STASH.Recipient"),
-    choices,
-    required: true,
-    blank: false
-  });
-
-  const wrapper = document.createElement("div");
-  wrapper.className = "stash-dialog-content";
-  wrapper.append(field.toFormGroup({}, { name: "recipient" }));
-  const contentHTML = wrapper.outerHTML;
+  const recipId = `stash-recip-${foundry.utils.randomID()}`;
+  const contentHTML = `<div class="stash-dialog-content">
+    <div class="form-group">
+      <label>${game.i18n.localize("CRUCIBLE_PARTY_STASH.Recipient")}</label>
+      <div class="form-fields">
+        <select id="${recipId}" name="recipient">
+          ${Object.entries(choices).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}
+        </select>
+      </div>
+    </div>
+  </div>`;
 
   try {
     return await foundry.applications.api.DialogV2.prompt({
@@ -628,9 +624,8 @@ async function _pickRecipient(choices) {
         label: game.i18n.localize("CRUCIBLE_PARTY_STASH.Give"),
         icon: "fa-solid fa-check",
         callback: (event, button) => {
-          const dialog = button.closest(".window-app");
-          const select = dialog?.querySelector("select[name=recipient]");
-          console.log(`${MODULE_ID} | [_pickRecipient] callback val=${select?.value}`);
+          const select = document.getElementById(recipId);
+          console.log(`${MODULE_ID} | [_pickRecipient] id=${recipId}, select=${!!select}, val=${select?.value}`);
           return select?.value || null;
         }
       },
