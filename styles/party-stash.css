@@ -255,3 +255,27 @@
 .crucible.actor-group .stash-list::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.25);
 }
+
+/* ─── Stash Tooltip Fallback ───
+ * Rendered when renderCard() fails for an item (e.g. missing actor context).
+ * Scoped to .crucible.crucible-tooltip because the tooltip container (#tooltip)
+ * lives outside the actor sheet DOM — .crucible.actor-group is not an ancestor. */
+
+.crucible.crucible-tooltip .stash-tooltip-fallback {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  white-space: nowrap;
+}
+
+.crucible.crucible-tooltip .stash-tooltip-fallback img {
+  border-radius: 4px;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+
+.crucible.crucible-tooltip .stash-tooltip-fallback strong {
+  font-size: var(--font-size-14, 0.875rem);
+  font-weight: 600;
+}

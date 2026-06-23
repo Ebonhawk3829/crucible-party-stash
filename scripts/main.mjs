@@ -152,6 +152,102 @@ function canUseStash() {
   return game.user.role >= minRole;
 }
 
+/* ─── Stash Tooltips ───
+ *
+ * On hover, builds a temporary in-memory CrucibleItem from the serialised
+ * stash data and calls renderCard(). Uses game.tooltip.activate() directly
+ * to avoid synthetic event re-dispatch and data-tooltip-html attribute races.
+ *
+ * Fallback: if renderCard() fails (e.g. item type that requires actor context),
+ * shows the item name + icon instead of nothing.
+ */
+
+const _stashTooltip = {
+  _activeId: null,
+
+  async onEnter(ev, groupActor) {
+    const li = ev.target.closest(".stash-item[data-stash-id]");
+    if (!li) return;
+
+    const stashId = li.dataset.stashId;
+    this._activeId = stashId;
+
+    const entry = _readStash(groupActor).find(e => e._stashId === stashId);
+    if (!entry) return;
+
+    const itemData = foundry.utils.deepClone(entry);
+    const itemName = itemData.name;
+    const itemImg = itemData.img;
+    delete itemData._stashId;
+
+    let tempItem;
+    try {
+      tempItem = new Item.implementation(itemData);
+    } catch (err) {
+      console.debug(`${MODULE_ID} | Item construction failed, showing fallback tooltip`, err);
+      if (this._activeId !== stashId || !li.matches(":hover")) return;
+      this._activateFallback(li, itemName, itemImg);
+      return;
+    }
+
+    let html;
+    try {
+      if (typeof tempItem.renderCard !== "function") return;
+      html = await tempItem.renderCard();
+    } catch (err) {
+      console.debug(`${MODULE_ID} | renderCard failed, showing fallback tooltip`, err);
+    }
+
+    // Stale check: did the user move to a different item during await?
+    if (this._activeId !== stashId) return;
+    if (!li.matches(":hover")) return;
+
+    if (!html) {
+      this._activateFallback(li, itemName, itemImg);
+      return;
+    }
+
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = html;
+    game.tooltip.activate(li, {
+      content: wrapper,
+      cssClass: "crucible crucible-tooltip"
+    });
+  },
+
+  onLeave(ev) {
+    const li = ev.target.closest(".stash-item[data-stash-id]");
+    if (!li) return;
+    // Only deactivate if we're the ones who activated
+    if (this._activeId !== li.dataset.stashId) return;
+    this._activeId = null;
+    game.tooltip.deactivate();
+  },
+
+  _activateFallback(li, name, img) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "stash-tooltip-fallback";
+
+    if (img) {
+      const imgEl = document.createElement("img");
+      imgEl.src = img;
+      imgEl.width = 36;
+      imgEl.height = 36;
+      imgEl.alt = "";
+      wrapper.appendChild(imgEl);
+    }
+
+    const strong = document.createElement("strong");
+    strong.textContent = name ?? "Unknown";
+    wrapper.appendChild(strong);
+
+    game.tooltip.activate(li, {
+      content: wrapper,
+      cssClass: "crucible crucible-tooltip"
+    });
+  }
+};
+
 /* ─── Initialization ─── */
 
 Hooks.once("init", async () => {
@@ -289,6 +385,10 @@ Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options)
   // ─── Stash listeners ───
   _activateStashDropListeners(stashTab, actor);
   _activateStashActionListeners(stashTab, actor);
+
+  // ─── Stash tooltips ───
+  stashTab.addEventListener("pointerenter", (ev) => _stashTooltip.onEnter(ev, actor), true);
+  stashTab.addEventListener("pointerleave", (ev) => _stashTooltip.onLeave(ev), true);
 });
 
 /* ─── Hero/Adversary sheet: intercept stash drops ─── */
@@ -465,7 +565,8 @@ function _activateStashActionListeners(stashTab, groupActor) {
         await _setStash(groupActor, s);
         return item;
       });
-      ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.ItemRemoved", { name: removed?.name ?? "Unknown" }));
+      if (!removed) return;
+      ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.ItemRemoved", { name: removed.name }));
       return;
     }
 
@@ -672,15 +773,19 @@ function _setupHeroDropInterception(app, element) {
     ev.preventDefault();
     ev.stopPropagation();
 
-    // Prevent dropActorSheetData from also processing this drop
-    _handledStashDrops.add(data.stashId);
-    queueMicrotask(() => _handledStashDrops.delete(data.stashId));
-
-    const groupActor = game.actors.get(data.groupActorId);
-    if (!groupActor) return;
-
-    const name = await _initiateTransferToActor(groupActor, data.stashId, app.actor);
-    if (name) ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.ItemMovedTo", { name, target: app.actor.name }));
+    // Prevent dropActorSheetData from also processing this drop.
+    // The hook fires synchronously during the same event, so the set entry
+    // only needs to survive until the hook checks it. try/finally guarantees
+    // cleanup on every exit path including early returns.
+    try {
+      _handledStashDrops.add(data.stashId);
+      const groupActor = game.actors.get(data.groupActorId);
+      if (!groupActor) return;
+      const name = await _initiateTransferToActor(groupActor, data.stashId, app.actor);
+      if (name) ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.ItemMovedTo", { name, target: app.actor.name }));
+    } finally {
+      _handledStashDrops.delete(data.stashId);
+    }
   }, true);
 }
 
