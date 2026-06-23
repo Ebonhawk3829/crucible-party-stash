@@ -15,9 +15,7 @@ function _withStashLock(actorId, fn) {
   if (!_stashLocks.has(actorId)) {
     _stashLocks.set(actorId, Promise.resolve());
   }
-  // The chain stored in the map must always settle so the next
-  // queued operation always executes. We use a separate resolver to
-  // decouple the callers's result from the serialization chain.
+  // The chain must always settle so queued operations execute in order.
   let resolve;
   const sentinel = new Promise(r => resolve = r);
   const result = _stashLocks.get(actorId).then(fn).finally(() => resolve());
@@ -27,8 +25,6 @@ function _withStashLock(actorId, fn) {
     throw err;
   });
 }
-
-/* ─── Utilities ─── */
 
 function _readStash(groupActor) {
   const raw = groupActor.getFlag(MODULE_ID, "stash") ?? [];
@@ -68,7 +64,6 @@ function _checkStashCapacity(stash) {
 function _isStackable(itemData) {
   const props = itemData.system?.properties;
   if (!props) return false;
-  // properties may be a Set (live document) or an Array (serialised)
   const hasStackable = props instanceof Set
     ? props.has("stackable")
     : Array.isArray(props) && props.includes("stackable");
@@ -158,12 +153,8 @@ function canUseStash() {
  * stash data and calls renderCard(). Uses game.tooltip.activate() directly
  * to avoid synthetic event re-dispatch and data-tooltip-html attribute races.
  *
- * Deferred deactivation (30ms) prevents flicker when the pointer moves between
- * children of the same <li>. A renderCard() output cache eliminates the async
- * gap on cross-item transitions after the first hover.
- *
  * Fallback: if renderCard() fails (e.g. item type that requires actor context),
- * shows the item name + icon instead of nothing. Fallbacks are not cached.
+ * shows the item name + icon instead of nothing.
  */
 
 const _TOOLTIP_CACHE_MAX = 50;
@@ -179,7 +170,7 @@ const _stashTooltip = {
 
     const stashId = li.dataset.stashId;
 
-    // Still within the same item — cancel any pending deactivation and bail.
+    // Still within the same item — cancel pending deactivation and bail.
     if (this._activeId === stashId) {
       clearTimeout(this._deactivateTimeout);
       this._deactivateTimeout = null;
@@ -201,18 +192,19 @@ const _stashTooltip = {
     const itemName = entry.name;
     const itemImg = entry.img;
 
-    // Check cache first — keyed on stashId since the stash entry is immutable
-    // between flag writes, and any flag write triggers a sheet re-render which
-    // calls clearCache(), so stale entries from a previous render cycle are
-    // never reachable.
+    // Check cache first. undefined = miss, null = known fallback, Node = cached card.
     const cached = this._cache.get(stashId);
-    if (cached) {
+    if (cached !== undefined) {
       if (this._activeId !== stashId) return;
       if (!li.matches(":hover")) return;
-      game.tooltip.activate(li, {
-        content: cached.cloneNode(true),
-        cssClass: "crucible crucible-tooltip"
-      });
+      if (cached === null) {
+        this._activateFallback(li, itemName, itemImg);
+      } else {
+        game.tooltip.activate(li, {
+          content: cached.cloneNode(true),
+          cssClass: "crucible crucible-tooltip"
+        });
+      }
       return;
     }
 
@@ -226,6 +218,7 @@ const _stashTooltip = {
       console.debug(`${MODULE_ID} | Item construction failed, showing fallback tooltip`, err);
       if (this._activeId !== stashId) return;
       if (!li.matches(":hover")) return;
+      this._cache.set(stashId, null);
       this._activateFallback(li, itemName, itemImg);
       return;
     }
@@ -238,11 +231,11 @@ const _stashTooltip = {
       console.debug(`${MODULE_ID} | renderCard failed, showing fallback tooltip`, err);
     }
 
-    // Stale check: did the user move to a different item during await?
     if (this._activeId !== stashId) return;
     if (!li.matches(":hover")) return;
 
     if (!html) {
+      this._cache.set(stashId, null);
       this._activateFallback(li, itemName, itemImg);
       return;
     }
@@ -250,15 +243,10 @@ const _stashTooltip = {
     const wrapper = document.createElement("div");
     wrapper.innerHTML = html;
 
-    // Cache the built tooltip DOM for this stash entry.
-    // Stash entries are currently immutable between flag writes, and any flag
-    // write triggers a sheet re-render which calls clearCache(). If a future
-    // feature allows in-place entry mutation (rename, affix editing) without a
-    // flag write, this cache will serve stale content — add targeted invalidation
-    // via _cache.delete(stashId) at the mutation site.
+    // Cache invalidated on re-render via clearCache().
     this._cache.set(stashId, wrapper);
 
-    // Evict oldest if over ceiling (Map iterates in insertion order).
+    // Evict oldest if over ceiling.
     if (this._cache.size > _TOOLTIP_CACHE_MAX) {
       const oldest = this._cache.keys().next().value;
       this._cache.delete(oldest);
@@ -275,12 +263,11 @@ const _stashTooltip = {
     if (!li) return;
     if (this._activeId !== li.dataset.stashId) return;
 
-    // Defer deactivation — if the pointer re-enters the same <li> (moving
-    // between children), onEnter will cancel this timeout and the tooltip
-    // stays up without any flicker.
+    // Defer deactivation 30ms — if the pointer re-enters the same <li>
+    // (moving between children), onEnter will cancel this timeout and the
+    // tooltip stays up without any flicker.
     clearTimeout(this._deactivateTimeout);
     this._deactivateTimeout = setTimeout(() => {
-      // Only deactivate if we haven't moved to a new item in the meantime.
       if (this._activeId === li.dataset.stashId) {
         this._activeId = null;
         game.tooltip.deactivate();
@@ -317,8 +304,6 @@ const _stashTooltip = {
     });
   }
 };
-
-/* ─── Initialization ─── */
 
 Hooks.once("init", async () => {
   console.log(`${MODULE_ID} | Initializing`);
@@ -388,8 +373,7 @@ async function _renderStashHTML(items, isEditable) {
  *   (which it does on full re-renders): our structure is gone → full rebuild.
  * - Light re-render where DOM is intact: could theoretically update in-place,
  *   but there's no reliable way to detect "my structure is still intact" without
- *   doing essentially the same amount of work as rebuilding. The rebuild cost
- *   for a group sheet that renders infrequently is negligible. */
+ *   doing essentially the same amount of work as rebuilding. */
 
 Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options) => {
   const actor = app.actor;
@@ -397,6 +381,9 @@ Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options)
 
   if (!canUseStash()) return;
 
+  // Stash entries are immutable between flag writes, and any flag write
+  // triggers a re-render. Clear the tooltip cache so stale rendered cards
+  // from a previous render cycle are never served.
   _stashTooltip.clearCache();
 
   const windowContent = element.querySelector(".window-content");
@@ -439,7 +426,6 @@ Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options)
   windowContent.appendChild(membersTab);
   windowContent.appendChild(stashTab);
 
-  // ─── Tab switching ───
   tabBar.addEventListener("click", (ev) => {
     const link = ev.target.closest("[data-stash-tab]");
     if (!link) return;
@@ -454,16 +440,12 @@ Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options)
     });
   });
 
-  // ─── Stash listeners ───
   _activateStashDropListeners(stashTab, actor);
   _activateStashActionListeners(stashTab, actor);
 
-  // ─── Stash tooltips ───
   stashTab.addEventListener("pointerenter", (ev) => _stashTooltip.onEnter(ev, actor), true);
   stashTab.addEventListener("pointerleave", (ev) => _stashTooltip.onLeave(ev), true);
 });
-
-/* ─── Hero/Adversary sheet: intercept stash drops ─── */
 
 Hooks.on("renderActorSheetV2", (app, element) => {
   if (app.actor?.type === "hero" || app.actor?.type === "adversary") {
@@ -846,9 +828,6 @@ function _setupHeroDropInterception(app, element) {
     ev.stopPropagation();
 
     // Prevent dropActorSheetData from also processing this drop.
-    // The hook fires synchronously during the same event, so the set entry
-    // only needs to survive until the hook checks it. try/finally guarantees
-    // cleanup on every exit path including early returns.
     try {
       _handledStashDrops.add(data.stashId);
       const groupActor = game.actors.get(data.groupActorId);
@@ -860,8 +839,6 @@ function _setupHeroDropInterception(app, element) {
     }
   }, true);
 }
-
-/* ─── Ready ─── */
 
 Hooks.once("ready", () => {
   console.log(`${MODULE_ID} | Ready. FVTT ${game.version}, Crucible ${game.system?.version}`);
