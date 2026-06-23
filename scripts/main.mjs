@@ -158,26 +158,65 @@ function canUseStash() {
  * stash data and calls renderCard(). Uses game.tooltip.activate() directly
  * to avoid synthetic event re-dispatch and data-tooltip-html attribute races.
  *
+ * Deferred deactivation (30ms) prevents flicker when the pointer moves between
+ * children of the same <li>. A renderCard() output cache eliminates the async
+ * gap on cross-item transitions after the first hover.
+ *
  * Fallback: if renderCard() fails (e.g. item type that requires actor context),
- * shows the item name + icon instead of nothing.
+ * shows the item name + icon instead of nothing. Fallbacks are not cached.
  */
+
+const _TOOLTIP_CACHE_MAX = 50;
 
 const _stashTooltip = {
   _activeId: null,
+  _deactivateTimeout: null,
+  _cache: new Map(),
 
   async onEnter(ev, groupActor) {
     const li = ev.target.closest(".stash-item[data-stash-id]");
     if (!li) return;
 
     const stashId = li.dataset.stashId;
+
+    // Still within the same item — cancel any pending deactivation and bail.
+    if (this._activeId === stashId) {
+      clearTimeout(this._deactivateTimeout);
+      this._deactivateTimeout = null;
+      return;
+    }
+
+    // Moving to a different item — deactivate immediately, no delay.
+    if (this._activeId) {
+      clearTimeout(this._deactivateTimeout);
+      this._deactivateTimeout = null;
+      game.tooltip.deactivate();
+    }
+
     this._activeId = stashId;
 
     const entry = _readStash(groupActor).find(e => e._stashId === stashId);
     if (!entry) return;
 
+    const itemName = entry.name;
+    const itemImg = entry.img;
+
+    // Check cache first — keyed on stashId since the stash entry is immutable
+    // between flag writes, and any flag write triggers a sheet re-render which
+    // calls clearCache(), so stale entries from a previous render cycle are
+    // never reachable.
+    const cached = this._cache.get(stashId);
+    if (cached) {
+      if (this._activeId !== stashId) return;
+      if (!li.matches(":hover")) return;
+      game.tooltip.activate(li, {
+        content: cached.cloneNode(true),
+        cssClass: "crucible crucible-tooltip"
+      });
+      return;
+    }
+
     const itemData = foundry.utils.deepClone(entry);
-    const itemName = itemData.name;
-    const itemImg = itemData.img;
     delete itemData._stashId;
 
     let tempItem;
@@ -185,7 +224,8 @@ const _stashTooltip = {
       tempItem = new Item.implementation(itemData);
     } catch (err) {
       console.debug(`${MODULE_ID} | Item construction failed, showing fallback tooltip`, err);
-      if (this._activeId !== stashId || !li.matches(":hover")) return;
+      if (this._activeId !== stashId) return;
+      if (!li.matches(":hover")) return;
       this._activateFallback(li, itemName, itemImg);
       return;
     }
@@ -209,8 +249,23 @@ const _stashTooltip = {
 
     const wrapper = document.createElement("div");
     wrapper.innerHTML = html;
+
+    // Cache the built tooltip DOM for this stash entry.
+    // Stash entries are currently immutable between flag writes, and any flag
+    // write triggers a sheet re-render which calls clearCache(). If a future
+    // feature allows in-place entry mutation (rename, affix editing) without a
+    // flag write, this cache will serve stale content — add targeted invalidation
+    // via _cache.delete(stashId) at the mutation site.
+    this._cache.set(stashId, wrapper);
+
+    // Evict oldest if over ceiling (Map iterates in insertion order).
+    if (this._cache.size > _TOOLTIP_CACHE_MAX) {
+      const oldest = this._cache.keys().next().value;
+      this._cache.delete(oldest);
+    }
+
     game.tooltip.activate(li, {
-      content: wrapper,
+      content: wrapper.cloneNode(true),
       cssClass: "crucible crucible-tooltip"
     });
   },
@@ -218,10 +273,25 @@ const _stashTooltip = {
   onLeave(ev) {
     const li = ev.target.closest(".stash-item[data-stash-id]");
     if (!li) return;
-    // Only deactivate if we're the ones who activated
     if (this._activeId !== li.dataset.stashId) return;
-    this._activeId = null;
-    game.tooltip.deactivate();
+
+    // Defer deactivation — if the pointer re-enters the same <li> (moving
+    // between children), onEnter will cancel this timeout and the tooltip
+    // stays up without any flicker.
+    clearTimeout(this._deactivateTimeout);
+    this._deactivateTimeout = setTimeout(() => {
+      // Only deactivate if we haven't moved to a new item in the meantime.
+      if (this._activeId === li.dataset.stashId) {
+        this._activeId = null;
+        game.tooltip.deactivate();
+      }
+      this._deactivateTimeout = null;
+    }, 30);
+  },
+
+  /** Call when the stash tab is rebuilt to drop stale cached content. */
+  clearCache() {
+    this._cache.clear();
   },
 
   _activateFallback(li, name, img) {
@@ -326,6 +396,8 @@ Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options)
   if (!actor || actor.type !== "group") return;
 
   if (!canUseStash()) return;
+
+  _stashTooltip.clearCache();
 
   const windowContent = element.querySelector(".window-content");
   if (!windowContent) return;
