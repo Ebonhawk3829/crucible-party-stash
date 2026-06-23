@@ -155,6 +155,14 @@
   background: rgba(255, 255, 255, 0.05);
 }
 
+.crucible.actor-group .stash-list .stash-item .stash-tooltip-zone {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
 .crucible.actor-group .stash-list .stash-item .icon {
   flex: 0 0 32px;
   width: 32px;

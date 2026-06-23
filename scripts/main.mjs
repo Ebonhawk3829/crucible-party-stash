@@ -165,16 +165,20 @@ const _stashTooltip = {
   _cache: new Map(),
 
   /**
-   * Bind tooltip listeners directly to each <li> element.
+   * Bind tooltip listeners to each .stash-tooltip-zone element.
+   * The zone excludes the .controls div, so Foundry's data-tooltip tooltips
+   * on control buttons never compete with the rich item-card tooltip.
    * Called once per render from the renderCrucibleGroupActorSheet hook.
    * @param {HTMLElement} stashTab
    * @param {Actor} groupActor
    */
   bind(stashTab, groupActor) {
-    const items = stashTab.querySelectorAll(".stash-item[data-stash-id]");
-    for (const li of items) {
-      li.addEventListener("pointerenter", (ev) => this._onItemEnter(ev, li, groupActor));
-      li.addEventListener("pointerleave", (ev) => this._onItemLeave(ev, li));
+    const zones = stashTab.querySelectorAll(".stash-item .stash-tooltip-zone");
+    for (const zone of zones) {
+      const li = zone.closest(".stash-item[data-stash-id]");
+      if (!li) continue;
+      zone.addEventListener("pointerenter", (ev) => this._onItemEnter(ev, li, groupActor));
+      zone.addEventListener("pointerleave", (ev) => this._onItemLeave(ev, li));
     }
   },
 
