@@ -161,6 +161,7 @@ const _TOOLTIP_CACHE_MAX = 50;
 
 const _stashTooltip = {
   _activeId: null,
+  _ourTooltipActive: false,
   _deactivateTimeout: null,
   _cache: new Map(),
 
@@ -188,8 +189,8 @@ const _stashTooltip = {
     if (this._activeId === stashId) {
       clearTimeout(this._deactivateTimeout);
       this._deactivateTimeout = null;
-      // Recover if the tooltip was killed by tab switch or external action.
-      if (!document.getElementById("tooltip")?.classList.contains("active")) {
+      // Recover if Foundry (or another module) killed our tooltip.
+      if (!this._ourTooltipActive) {
         this._showTooltip(li, stashId, groupActor);
       }
       return;
@@ -198,6 +199,8 @@ const _stashTooltip = {
     if (this._activeId) {
       clearTimeout(this._deactivateTimeout);
       this._deactivateTimeout = null;
+      this._ourTooltipActive = false;
+      this._activeId = null;
       game.tooltip.deactivate();
     }
 
@@ -214,6 +217,7 @@ const _stashTooltip = {
     clearTimeout(this._deactivateTimeout);
     this._deactivateTimeout = setTimeout(() => {
       if (this._activeId === li.dataset.stashId) {
+        this._ourTooltipActive = false;
         this._activeId = null;
         game.tooltip.deactivate();
       }
@@ -240,6 +244,7 @@ const _stashTooltip = {
           html: cached.cloneNode(true),
           cssClass: "crucible crucible-tooltip"
         });
+        this._ourTooltipActive = true;
       }
       return;
     }
@@ -292,6 +297,7 @@ const _stashTooltip = {
       html: wrapper.cloneNode(true),
       cssClass: "crucible crucible-tooltip"
     });
+    this._ourTooltipActive = true;
   },
 
   /** Call when the stash tab is rebuilt to drop stale cached content. */
@@ -320,6 +326,7 @@ const _stashTooltip = {
       html: wrapper,
       cssClass: "crucible crucible-tooltip"
     });
+    this._ourTooltipActive = true;
   }
 };
 
@@ -859,4 +866,13 @@ function _setupHeroDropInterception(app, element) {
 
 Hooks.once("ready", () => {
   console.log(`${MODULE_ID} | Ready. FVTT ${game.version}, Crucible ${game.system?.version}`);
+
+  const _origDeactivate = game.tooltip.deactivate.bind(game.tooltip);
+  game.tooltip.deactivate = function (...args) {
+    if (_stashTooltip._ourTooltipActive) {
+      _stashTooltip._ourTooltipActive = false;
+      _stashTooltip._activeId = null;
+    }
+    return _origDeactivate(...args);
+  };
 });
