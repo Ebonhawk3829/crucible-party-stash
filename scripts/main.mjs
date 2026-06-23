@@ -164,20 +164,33 @@ const _stashTooltip = {
   _deactivateTimeout: null,
   _cache: new Map(),
 
-  async onEnter(ev, groupActor) {
-    const li = ev.target.closest(".stash-item[data-stash-id]");
-    if (!li) return;
+  /**
+   * Bind tooltip listeners directly to each <li> element.
+   * Called once per render from the renderCrucibleGroupActorSheet hook.
+   * @param {HTMLElement} stashTab
+   * @param {Actor} groupActor
+   */
+  bind(stashTab, groupActor) {
+    const items = stashTab.querySelectorAll(".stash-item[data-stash-id]");
+    for (const li of items) {
+      li.addEventListener("pointerenter", (ev) => this._onItemEnter(ev, li, groupActor));
+      li.addEventListener("pointerleave", (ev) => this._onItemLeave(ev, li));
+    }
+  },
 
+  _onItemEnter(ev, li, groupActor) {
     const stashId = li.dataset.stashId;
 
-    // Still within the same item — cancel pending deactivation and bail.
     if (this._activeId === stashId) {
       clearTimeout(this._deactivateTimeout);
       this._deactivateTimeout = null;
+      // Recover if the tooltip was killed by tab switch or external action.
+      if (!document.getElementById("tooltip")?.classList.contains("active")) {
+        this._showTooltip(li, stashId, groupActor);
+      }
       return;
     }
 
-    // Moving to a different item — deactivate immediately, no delay.
     if (this._activeId) {
       clearTimeout(this._deactivateTimeout);
       this._deactivateTimeout = null;
@@ -185,14 +198,33 @@ const _stashTooltip = {
     }
 
     this._activeId = stashId;
+    this._showTooltip(li, stashId, groupActor);
+  },
 
+  _onItemLeave(ev, li) {
+    if (this._activeId !== li.dataset.stashId) return;
+
+    // Only deactivate on genuine <li> exit, not child-to-child moves.
+    if (li.contains(ev.relatedTarget)) return;
+
+    clearTimeout(this._deactivateTimeout);
+    this._deactivateTimeout = setTimeout(() => {
+      if (this._activeId === li.dataset.stashId) {
+        this._activeId = null;
+        game.tooltip.deactivate();
+      }
+      this._deactivateTimeout = null;
+    }, 30);
+  },
+
+  async _showTooltip(li, stashId, groupActor) {
     const entry = _readStash(groupActor).find(e => e._stashId === stashId);
     if (!entry) return;
 
     const itemName = entry.name;
     const itemImg = entry.img;
 
-    // Check cache first. undefined = miss, null = known fallback, Node = cached card.
+    // undefined = miss, null = known fallback, Node = cached card.
     const cached = this._cache.get(stashId);
     if (cached !== undefined) {
       if (this._activeId !== stashId) return;
@@ -201,7 +233,7 @@ const _stashTooltip = {
         this._activateFallback(li, itemName, itemImg);
       } else {
         game.tooltip.activate(li, {
-          content: cached.cloneNode(true),
+          html: cached.cloneNode(true),
           cssClass: "crucible crucible-tooltip"
         });
       }
@@ -246,34 +278,16 @@ const _stashTooltip = {
     // Cache invalidated on re-render via clearCache().
     this._cache.set(stashId, wrapper);
 
-    // Evict oldest if over ceiling.
+    // Evict oldest if over ceiling (Map preserves insertion order).
     if (this._cache.size > _TOOLTIP_CACHE_MAX) {
       const oldest = this._cache.keys().next().value;
       this._cache.delete(oldest);
     }
 
     game.tooltip.activate(li, {
-      content: wrapper.cloneNode(true),
+      html: wrapper.cloneNode(true),
       cssClass: "crucible crucible-tooltip"
     });
-  },
-
-  onLeave(ev) {
-    const li = ev.target.closest(".stash-item[data-stash-id]");
-    if (!li) return;
-    if (this._activeId !== li.dataset.stashId) return;
-
-    // Defer deactivation 30ms — if the pointer re-enters the same <li>
-    // (moving between children), onEnter will cancel this timeout and the
-    // tooltip stays up without any flicker.
-    clearTimeout(this._deactivateTimeout);
-    this._deactivateTimeout = setTimeout(() => {
-      if (this._activeId === li.dataset.stashId) {
-        this._activeId = null;
-        game.tooltip.deactivate();
-      }
-      this._deactivateTimeout = null;
-    }, 30);
   },
 
   /** Call when the stash tab is rebuilt to drop stale cached content. */
@@ -299,7 +313,7 @@ const _stashTooltip = {
     wrapper.appendChild(strong);
 
     game.tooltip.activate(li, {
-      content: wrapper,
+      html: wrapper,
       cssClass: "crucible crucible-tooltip"
     });
   }
@@ -443,8 +457,7 @@ Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options)
   _activateStashDropListeners(stashTab, actor);
   _activateStashActionListeners(stashTab, actor);
 
-  stashTab.addEventListener("pointerenter", (ev) => _stashTooltip.onEnter(ev, actor), true);
-  stashTab.addEventListener("pointerleave", (ev) => _stashTooltip.onLeave(ev), true);
+  _stashTooltip.bind(stashTab, actor);
 });
 
 Hooks.on("renderActorSheetV2", (app, element) => {
