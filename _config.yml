@@ -1,2 +1,8 @@
 google_site_verification: a5shdzVPIbPKb-dV3UlbuR1yx_4WmMeSRmFq23ANk60
 theme: jekyll-theme-cayman
+title: Crucible Party Stash - Foundry VTT Module
+description: A shared party inventory and loot management module for the Crucible game system in Foundry Virtual Tabletop.
+author: Ebonhawk3829
+plugins:
+  - jekyll-sitemap
+  - jekyll-seo-tag
