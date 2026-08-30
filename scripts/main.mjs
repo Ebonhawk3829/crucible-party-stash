@@ -108,7 +108,7 @@ Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options)
   const stashTab = document.createElement("div");
   stashTab.className = `party-stash-panel ${activeTab === "stash" ? "active" : ""}`;
   stashTab.dataset.stashTab = "stash";
-  stashTab.innerHTML = await _renderStashHTML(stashItems, isEditable);
+  stashTab.innerHTML = await _renderStashHTML(stashItems, isEditable, actor);
 
   windowContent.innerHTML = "";
   windowContent.appendChild(tabBar);
@@ -146,7 +146,7 @@ Hooks.on("dropActorSheetData", onDropActorSheetData);
 Hooks.once("ready", () => {
   console.log(`${MODULE_ID} | Ready. FVTT ${game.version}, Crucible ${game.system?.version}`);
 
-  // MONKEY-PATCH: TooltipManager has no deactivation hook as of v14.364.
+  // MONKEY-PATCH: TooltipManager has no deactivation hook as of v14.367.
   // The tooltip module owns its state cleanup (onExternalDeactivate);
   // this entry point owns the global mutation so it's auditable in one place.
   const _origDeactivate = game.tooltip.deactivate.bind(game.tooltip);

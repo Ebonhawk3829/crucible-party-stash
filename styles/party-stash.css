@@ -229,6 +229,80 @@
   color: var(--color-warm-2, #c33);
 }
 
+.crucible.actor-group .stash-list .stash-item .controls .control[data-stash-action="editQty"]:hover {
+  color: var(--color-warm-2, #c33);
+}
+
+/* ─── Currency Section ─── */
+
+.crucible.actor-group .stash-currency-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--color-border-light-1, #333);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.crucible.actor-group .stash-currency-pool {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.crucible.actor-group .stash-currency-pool i {
+  color: var(--color-warm-2, #c33);
+  flex: 0 0 auto;
+}
+
+.crucible.actor-group .stash-currency-amount {
+  font-size: var(--font-size-14, 0.875rem);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crucible.actor-group .stash-currency-section .controls {
+  display: flex;
+  gap: 0.25rem;
+  flex: 0 0 auto;
+}
+
+.crucible.actor-group .stash-currency-section .controls .control {
+  cursor: pointer;
+  opacity: 0.5;
+  padding: 0.2rem 0.3rem;
+  border-radius: 3px;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.crucible.actor-group .stash-currency-section .controls .control:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-warm-2, #c33);
+}
+
+/* ─── Split Dialog ─── */
+
+.stash-split-dialog .stash-split-members {
+  margin-top: 0.5rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.stash-split-dialog .stash-split-member label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: normal;
+  padding: 0.15rem 0;
+}
+
 /* ─── Drag Feedback ─── */
 
 .crucible.actor-group .party-stash-panel[data-stash-tab="stash"].drag-over {

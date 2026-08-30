@@ -103,3 +103,67 @@ export function canUseStash() {
   const minRole = game.settings.get(MODULE_ID, "minRole");
   return game.user.role >= minRole;
 }
+
+/* ─── Currency Pool ───
+ * The party currency pool is a single integer stored in base currency units
+ * (cp, multiplier=1), matching how CrucibleActor stores system.currency.
+ * Denomination breakdown for display is derived via crucible.CONFIG.currency.
+ */
+
+/**
+ * Read the party currency pool from the group actor.
+ * @param {Actor} groupActor
+ * @returns {number} pool amount in base currency units, never negative
+ */
+export function _getCurrency(groupActor) {
+  const raw = groupActor.getFlag(MODULE_ID, "currency");
+  return Number.isFinite(raw) ? Math.max(Math.trunc(raw), 0) : 0;
+}
+
+/**
+ * Write the party currency pool to the group actor.
+ * @param {Actor} groupActor
+ * @param {number} amount  pool amount in base currency units
+ */
+export async function _setCurrency(groupActor, amount) {
+  await groupActor.setFlag(MODULE_ID, "currency", Math.max(Math.trunc(amount), 0));
+}
+
+/**
+ * Format a base-unit currency amount as a human-readable string with
+ * denomination abbreviations, e.g. 1234 → "1pp 2gp 3sp 4cp".
+ * Mirrors CrucibleItem.formatCurrency but without needing an Item instance.
+ * @param {number} amount  amount in base currency units
+ * @returns {string}
+ */
+export function _formatCurrency(amount) {
+  const cfg = crucible?.CONFIG?.currency;
+  if (!cfg) return String(amount);
+  const parts = [];
+  let remaining = amount;
+  const denominations = Object.entries(cfg).toSorted((a, b) => b[1].multiplier - a[1].multiplier);
+  for (const [key, denom] of denominations) {
+    const count = Math.floor(remaining / denom.multiplier);
+    remaining -= count * denom.multiplier;
+    if (count) parts.push(`${count}${game.i18n.localize(denom.abbreviation)}`);
+  }
+  return parts.join(" ") || "0";
+}
+
+/**
+ * Resolve the group actor's member list to an array of Actor instances.
+ * Crucible's group member schema uses `actorId` as the reference field;
+ * `memberArray.actors` is a runtime Set of resolved Actor instances
+ * (populated by the system), falling back to raw array iteration.
+ * @param {Actor} groupActor
+ * @returns {Actor[]}
+ */
+export function _resolveGroupMembers(groupActor) {
+  const memberArray = groupActor.system.members ?? [];
+  if (memberArray.actors) {
+    return Array.from(memberArray.actors);
+  }
+  return Array.from(memberArray)
+    .map(m => game.actors.get(m.actorId ?? m.id))
+    .filter(Boolean);
+}

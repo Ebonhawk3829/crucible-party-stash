@@ -9,45 +9,35 @@
 import {
   MODULE_ID,
   _readStash, _getStash, _setStash, _checkStashCapacity,
-  _isStackable, _stashEntryMatches, _withStashLock
+  _isStackable, _stashEntryMatches, _withStashLock,
+  _getCurrency, _formatCurrency
 } from "./stash-data.mjs";
 import {
-  _promptQuantity, _pickRecipient, _initiateTransferToActor
+  _promptQuantity, _pickRecipient, _initiateTransferToActor,
+  _takeCurrency, _splitCurrency, _depositCurrency, _createCurrency
 } from "./stash-transfer.mjs";
 
 export const TEMPLATE_STASH = `modules/${MODULE_ID}/templates/stash-panel.hbs`;
 
-/**
- * Resolve the group actor's member list to an array of Actor instances.
- * Crucible's group member schema uses `actorId` as the reference field;
- * `memberArray.actors` is a runtime Set of resolved Actor instances
- * (populated by the system), falling back to raw array iteration.
- * @param {Actor} groupActor
- * @returns {Actor[]}
- */
-function _resolveGroupMembers(groupActor) {
-  const memberArray = groupActor.system.members ?? [];
-  if (memberArray.actors) {
-    return Array.from(memberArray.actors);
-  }
-  return Array.from(memberArray)
-    .map(m => game.actors.get(m.actorId ?? m.id))
-    .filter(Boolean);
-}
-
 /* ─── Render the stash panel HTML ─── */
 
-async function _renderStashHTML(items, isEditable) {
+async function _renderStashHTML(items, isEditable, groupActor) {
   const localized = items.map(item => ({
     ...item,
     typeLabel: CONFIG.Item.typeLabels?.[item.type]
       ? game.i18n.localize(CONFIG.Item.typeLabels[item.type])
-      : item.type
+      : item.type,
+    isStackable: _isStackable(item)
   }));
   try {
     return await foundry.applications.handlebars.renderTemplate(
       TEMPLATE_STASH,
-      { items: localized, isEmpty: items.length === 0, isEditable }
+      {
+        items: localized, isEmpty: items.length === 0, isEditable,
+        pool: _getCurrency(groupActor),
+        isGM: game.user.isGM,
+        formatCurrency: _formatCurrency
+      }
     );
   } catch (err) {
     console.error(`${MODULE_ID} | Template render failed`, err);
@@ -194,6 +184,45 @@ function _activateStashDropListeners(stashTab, groupActor) {
   });
 }
 
+/* ─── Edit quantity ───
+ * Prompt for a new quantity for a stackable stash entry, then write it
+ * under the lock. Dialog happens outside the lock; the entry is
+ * re-validated inside since it may have changed while the dialog was open.
+ */
+
+async function _editStashQuantity(groupActor, stashId) {
+  // Read outside lock for dialog — entry snapshot may be stale, validated inside lock
+  const stash = _readStash(groupActor);
+  const entry = stash.find(e => e._stashId === stashId);
+  if (!entry) return;
+
+  const currentQty = entry.system?.quantity ?? 1;
+  const newQty = await _promptQuantity(
+    game.i18n.localize("CRUCIBLE_PARTY_STASH.EditQuantityLabel"),
+    Number.MAX_SAFE_INTEGER,
+    game.i18n.localize("CRUCIBLE_PARTY_STASH.EditQuantityTitle"),
+    currentQty
+  );
+  if (newQty === null || newQty === currentQty) return;
+
+  const updated = await _withStashLock(groupActor.id, async () => {
+    const s = _getStash(groupActor);
+    const idx = s.findIndex(e => e._stashId === stashId);
+    if (idx === -1) return null;
+    s[idx].system.quantity = newQty;
+    const sheet = groupActor.sheet;
+    if (sheet) sheet._stashActiveTab = "stash";
+    await _setStash(groupActor, s);
+    return s[idx];
+  });
+
+  if (updated) {
+    ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.QuantityUpdated", {
+      name: updated.name, quantity: newQty
+    }));
+  }
+}
+
 /* ─── Click: Give / Remove ───
  * Uses data-stash-action instead of data-action to prevent Foundry's
  * ApplicationV2 action system from intercepting clicks. */
@@ -215,6 +244,31 @@ function _activateStashActionListeners(stashTab, groupActor) {
 
     const action = el.dataset.stashAction;
     const stashId = el.dataset.stashId;
+
+    if (action === "currencyTake") {
+      await _takeCurrency(groupActor);
+      return;
+    }
+
+    if (action === "currencyDeposit") {
+      await _depositCurrency(groupActor);
+      return;
+    }
+
+    if (action === "currencySplit") {
+      await _splitCurrency(groupActor);
+      return;
+    }
+
+    if (action === "currencyCreate") {
+      await _createCurrency(groupActor);
+      return;
+    }
+
+    if (action === "editQty") {
+      await _editStashQuantity(groupActor, stashId);
+      return;
+    }
 
     if (action === "remove") {
       const removed = await _withStashLock(groupActor.id, async () => {

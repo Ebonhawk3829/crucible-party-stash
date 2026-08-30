@@ -11,7 +11,8 @@
 import {
   MODULE_ID,
   _readStash, _getStash, _setStash,
-  _isStackable, _stashEntryMatches, _withStashLock
+  _isStackable, _stashEntryMatches, _withStashLock,
+  _getCurrency, _setCurrency, _formatCurrency, _resolveGroupMembers
 } from "./stash-data.mjs";
 
 /* Prevent double-fire when both the capturing drop listener and
@@ -71,7 +72,7 @@ async function _promptQuantity(label, max, title, initial = 1) {
 
 /* ─── Recipient picker dialog ─── */
 
-async function _pickRecipient(choices) {
+async function _pickRecipient(choices, title) {
   const recipId = `stash-recip-${foundry.utils.randomID()}`;
   const contentHTML = `<div class="stash-dialog-content">
     <div class="form-group">
@@ -87,7 +88,7 @@ async function _pickRecipient(choices) {
   try {
     return await foundry.applications.api.DialogV2.prompt({
       window: {
-        title: game.i18n.localize("CRUCIBLE_PARTY_STASH.GiveItem"),
+        title: title ?? game.i18n.localize("CRUCIBLE_PARTY_STASH.GiveItem"),
         icon: "fa-solid fa-hand-holding"
       },
       content: contentHTML,
@@ -238,5 +239,263 @@ export function _setupHeroDropInterception(app, element) {
   }, true);
 }
 
+/* ─── Currency: Take ───
+ * Player-facing withdrawal. Prompts for an amount, then moves it from the
+ * pool to the acting user's designated character. Under the lock, the pool
+ * is clamped to what's actually available — if another user drained the
+ * pool while the dialog was open, the taker gets what remains.
+ */
+
+async function _takeCurrency(groupActor) {
+  const pool = _getCurrency(groupActor);
+  if (pool <= 0) {
+    ui.notifications.warn(game.i18n.localize("CRUCIBLE_PARTY_STASH.PoolEmpty"));
+    return;
+  }
+
+  const amount = await _promptQuantity(
+    game.i18n.localize("CRUCIBLE_PARTY_STASH.TakeCurrencyLabel"),
+    pool,
+    game.i18n.localize("CRUCIBLE_PARTY_STASH.TakeCurrencyTitle"),
+    pool
+  );
+  if (!amount) return;
+
+  const taken = await _withStashLock(groupActor.id, async () => {
+    const current = _getCurrency(groupActor);
+    const actual = Math.min(amount, current);
+    if (actual <= 0) return 0;
+    await _setCurrency(groupActor, current - actual);
+    return actual;
+  });
+
+  if (!taken) return;
+
+  // Credit the acting user's character. If they own exactly one group member,
+  // credit it directly; otherwise let them pick.
+  const members = _resolveGroupMembers(groupActor);
+  const owned = members.filter(a => a.testUserPermission(game.user, "OWNER"));
+  let target = owned.length === 1 ? owned[0] : null;
+  if (!target) {
+    if (!owned.length) {
+      ui.notifications.warn(game.i18n.localize("CRUCIBLE_PARTY_STASH.NoOwnedCharacter"));
+      return;
+    }
+    const picked = await _pickRecipient(
+      Object.fromEntries(owned.map(a => [a.id, a.name])),
+      game.i18n.localize("CRUCIBLE_PARTY_STASH.TakeCurrencyTitle")
+    );
+    if (!picked) return;
+    target = game.actors.get(picked);
+    if (!target) return;
+  }
+
+  const applied = await target.modifyCurrency(taken);
+  if (applied < taken) {
+    // Shouldn't happen (modifyCurrency only clamps at 0 and we're adding),
+    // but refund the difference to the pool if it somehow does.
+    await _withStashLock(groupActor.id, async () => {
+      await _setCurrency(groupActor, _getCurrency(groupActor) + (taken - applied));
+    });
+    ui.notifications.warn(game.i18n.localize("CRUCIBLE_PARTY_STASH.CurrencyPartial"));
+  }
+  ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.CurrencyTaken", {
+    amount: _formatCurrency(taken), target: target.name
+  }));
+}
+
+/* ─── Currency: Split ───
+ * GM-only distribution. Prompts for a total amount and a checklist of
+ * members, then divides evenly. Remainder units (base currency doesn't
+ * always divide cleanly) are assigned to checked members in list order
+ * until exhausted, so the full amount is always distributed.
+ */
+
+async function _splitCurrency(groupActor) {
+  const members = _resolveGroupMembers(groupActor);
+  if (!members.length) {
+    ui.notifications.warn(game.i18n.localize("CRUCIBLE_PARTY_STASH.NoMembers"));
+    return;
+  }
+
+  const pool = _getCurrency(groupActor);
+  const { amount, selected } = await _splitCurrencyDialog(members, pool);
+  if (!amount || !selected.length) return;
+
+  const per = Math.floor(amount / selected.length);
+  let remainder = amount - (per * selected.length);
+  const shares = new Map(selected.map(id => [id, per]));
+  for (const id of selected) {
+    if (remainder <= 0) break;
+    shares.set(id, shares.get(id) + 1);
+    remainder--;
+  }
+
+  const distributed = await _withStashLock(groupActor.id, async () => {
+    const current = _getCurrency(groupActor);
+    const actual = Math.min(amount, current);
+    if (actual < amount) {
+      ui.notifications.warn(game.i18n.format("CRUCIBLE_PARTY_STASH.PoolInsufficient", {
+        available: _formatCurrency(current)
+      }));
+      return 0;
+    }
+    await _setCurrency(groupActor, current - actual);
+    return actual;
+  });
+  if (!distributed) return;
+
+  // Credit each selected member. Track failures so the pool can be refunded
+  // for any share that couldn't be delivered.
+  let failedTotal = 0;
+  for (const [actorId, share] of shares) {
+    const actor = game.actors.get(actorId);
+    if (!actor) { failedTotal += share; continue; }
+    const applied = await actor.modifyCurrency(share);
+    if (applied < share) failedTotal += (share - applied);
+    ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.CurrencySplitTo", {
+      amount: _formatCurrency(share), target: actor.name
+    }));
+  }
+
+  if (failedTotal > 0) {
+    await _withStashLock(groupActor.id, async () => {
+      await _setCurrency(groupActor, _getCurrency(groupActor) + failedTotal);
+    });
+    ui.notifications.warn(game.i18n.localize("CRUCIBLE_PARTY_STASH.CurrencyPartial"));
+  }
+}
+
+/* ─── Split dialog: amount + member checklist ─── */
+
+async function _splitCurrencyDialog(members, pool) {
+  const amountId = `stash-split-amt-${foundry.utils.randomID()}`;
+  const checkboxes = members.map((m, i) => `
+    <div class="form-group stash-split-member">
+      <label>
+        <input type="checkbox" name="member" value="${m.id}" ${i === 0 ? "checked" : ""}>
+        ${m.name}
+      </label>
+    </div>`).join("");
+  const contentHTML = `<div class="stash-dialog-content stash-split-dialog">
+    <div class="form-group">
+      <label>${game.i18n.localize("CRUCIBLE_PARTY_STASH.SplitAmountLabel")}</label>
+      <div class="form-fields">
+        <input id="${amountId}" type="number" name="amount" min="1" max="${pool}" value="${pool}" autofocus>
+      </div>
+      <p class="hint">${game.i18n.format("CRUCIBLE_PARTY_STASH.SplitPoolHint", { pool: _formatCurrency(pool) })}</p>
+    </div>
+    <fieldset class="stash-split-members">
+      <legend>${game.i18n.localize("CRUCIBLE_PARTY_STASH.SplitMembers")}</legend>
+      ${checkboxes}
+    </fieldset>
+  </div>`;
+
+  try {
+    const result = await foundry.applications.api.DialogV2.prompt({
+      window: {
+        title: game.i18n.localize("CRUCIBLE_PARTY_STASH.SplitCurrencyTitle"),
+        icon: "fa-solid fa-coins"
+      },
+      content: contentHTML,
+      ok: {
+        label: game.i18n.localize("CRUCIBLE_PARTY_STASH.Split"),
+        icon: "fa-solid fa-coins",
+        callback: (event, button) => {
+          const input = document.getElementById(amountId);
+          const amount = input ? Number(input.value) : 0;
+          if (!Number.isFinite(amount) || amount < 1) return null;
+          const selected = [...button.form.querySelectorAll("input[name='member']:checked")]
+            .map(cb => cb.value);
+          return { amount: Math.trunc(amount), selected };
+        }
+      },
+      rejectClose: false
+    });
+    return result ?? { amount: 0, selected: [] };
+  } catch (err) {
+    console.error(`${MODULE_ID} | _splitCurrencyDialog error:`, err);
+    return { amount: 0, selected: [] };
+  }
+}
+
+/* ─── Currency: Deposit ───
+ * Player-facing reverse of Take. Prompts for an amount bounded by the
+ * acting user's owned character's funds, deducts from the character, and
+ * adds to the pool. The character is deducted first (modifyCurrency clamps
+ * at 0 and returns the applied delta) so the pool only ever receives what
+ * was actually taken from the character.
+ */
+
+async function _depositCurrency(groupActor) {
+  // Resolve the acting user's character: auto-target if they own exactly
+  // one group member, otherwise let them pick.
+  const members = _resolveGroupMembers(groupActor);
+  const owned = members.filter(a => a.testUserPermission(game.user, "OWNER"));
+  let source = owned.length === 1 ? owned[0] : null;
+  if (!source) {
+    if (!owned.length) {
+      ui.notifications.warn(game.i18n.localize("CRUCIBLE_PARTY_STASH.NoOwnedCharacter"));
+      return;
+    }
+    const picked = await _pickRecipient(
+      Object.fromEntries(owned.map(a => [a.id, a.name])),
+      game.i18n.localize("CRUCIBLE_PARTY_STASH.DepositCurrencyTitle")
+    );
+    if (!picked) return;
+    source = game.actors.get(picked);
+    if (!source) return;
+  }
+
+  const funds = source.system.currency ?? 0;
+  if (funds <= 0) {
+    ui.notifications.warn(game.i18n.format("CRUCIBLE_PARTY_STASH.CharacterBroke", { target: source.name }));
+    return;
+  }
+
+  const amount = await _promptQuantity(
+    game.i18n.localize("CRUCIBLE_PARTY_STASH.DepositCurrencyLabel"),
+    funds,
+    game.i18n.localize("CRUCIBLE_PARTY_STASH.DepositCurrencyTitle"),
+    funds
+  );
+  if (!amount) return;
+
+  // Deduct from the character first. modifyCurrency returns the applied
+  // delta (negative for a deduction, 0 if the actor had no funds to take).
+  const applied = await source.modifyCurrency(-amount);
+  const deposited = Math.abs(Math.min(applied, 0));
+  if (!deposited) return;
+
+  await _withStashLock(groupActor.id, async () => {
+    await _setCurrency(groupActor, _getCurrency(groupActor) + deposited);
+  });
+  ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.CurrencyDeposited", {
+    amount: _formatCurrency(deposited), target: source.name
+  }));
+}
+
+/* ─── Currency: Create (GM) ───
+ * GM-only mint. Prompts for an amount with no upper bound and adds it
+ * directly to the pool without touching any character's funds.
+ */
+
+async function _createCurrency(groupActor) {
+  const amount = await _promptQuantity(
+    game.i18n.localize("CRUCIBLE_PARTY_STASH.CreateCurrencyLabel"),
+    Number.MAX_SAFE_INTEGER,
+    game.i18n.localize("CRUCIBLE_PARTY_STASH.CreateCurrencyTitle"),
+    100
+  );
+  if (!amount) return;
+
+  await _withStashLock(groupActor.id, async () => {
+    await _setCurrency(groupActor, _getCurrency(groupActor) + amount);
+  });
+  ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.CurrencyCreated", {
+    amount: _formatCurrency(amount)
+  }));
+}
+
 /* Re-export for stash-ui.mjs (the Give button uses these) */
-export { _promptQuantity, _pickRecipient, _initiateTransferToActor };
+export { _promptQuantity, _pickRecipient, _initiateTransferToActor, _takeCurrency, _splitCurrency, _depositCurrency, _createCurrency };

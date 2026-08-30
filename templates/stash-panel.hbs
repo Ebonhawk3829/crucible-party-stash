@@ -1,3 +1,35 @@
+<div class="stash-currency-section">
+  <div class="stash-currency-pool">
+    <i class="fa-solid fa-coins"></i>
+    <span class="stash-currency-amount">{{formatCurrency pool}}</span>
+  </div>
+  {{#if isEditable}}
+  <div class="controls">
+    <a class="control" data-stash-action="currencyDeposit"
+       data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.DepositCurrencyTitle"}}"
+       aria-label="{{localize "CRUCIBLE_PARTY_STASH.DepositCurrencyTitle"}}">
+      <i class="fa-solid fa-arrow-up-from-bracket"></i>
+    </a>
+    <a class="control" data-stash-action="currencyTake"
+       data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.TakeCurrencyTitle"}}"
+       aria-label="{{localize "CRUCIBLE_PARTY_STASH.TakeCurrencyTitle"}}">
+      <i class="fa-solid fa-hand-holding-dollar"></i>
+    </a>
+    {{#if isGM}}
+    <a class="control" data-stash-action="currencyCreate"
+       data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.CreateCurrencyTitle"}}"
+       aria-label="{{localize "CRUCIBLE_PARTY_STASH.CreateCurrencyTitle"}}">
+      <i class="fa-solid fa-plus"></i>
+    </a>
+    <a class="control" data-stash-action="currencySplit"
+       data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.SplitCurrencyTitle"}}"
+       aria-label="{{localize "CRUCIBLE_PARTY_STASH.SplitCurrencyTitle"}}">
+      <i class="fa-solid fa-coins"></i>
+    </a>
+    {{/if}}
+  </div>
+  {{/if}}
+</div>
 {{#if isEmpty}}
 <div class="stash-empty">
   <p><i class="fa-solid fa-box-open"></i> {{localize "CRUCIBLE_PARTY_STASH.StashEmpty"}}</p>
@@ -21,6 +53,13 @@
       </div>
       {{#if ../isEditable}}
       <div class="controls">
+        {{#if this.isStackable}}
+        <a class="control" data-stash-action="editQty" data-stash-id="{{this._stashId}}"
+           data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.EditQuantityTitle"}}"
+           aria-label="{{localize "CRUCIBLE_PARTY_STASH.EditQuantityTitle"}}">
+          <i class="fa-solid fa-pen"></i>
+        </a>
+        {{/if}}
         <a class="control" data-stash-action="give" data-stash-id="{{this._stashId}}"
            data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.GiveToCharacter"}}"
            aria-label="{{localize "CRUCIBLE_PARTY_STASH.GiveToCharacter"}}">
