@@ -327,6 +327,29 @@
   font-weight: 600;
 }
 
+/* Exchange dialog rate hint */
+.stash-exchange-dialog .stash-exchange-rate {
+  min-height: 1em;
+  margin: 0.25rem 0 0;
+}
+
+/* Exchange dialog paired slider + number box */
+.stash-exchange-dialog .stash-exchange-amount {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.stash-exchange-dialog .stash-exchange-amount input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.stash-exchange-dialog .stash-exchange-amount input[type="number"] {
+  flex: 0 0 5rem;
+  width: 5rem;
+}
+
 .crucible.actor-group .stash-currency-section .controls {
   display: flex;
   gap: 0.25rem;

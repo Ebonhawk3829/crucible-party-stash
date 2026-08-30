@@ -679,14 +679,15 @@ async function _exchangeCurrency(groupActor) {
 
   const fromMult = cfg[from].multiplier;
   const toMult = cfg[to].multiplier;
-  if (fromMult <= toMult) return; // only downward conversion (pp→gp, gp→sp, …)
+  if (!fromMult || !toMult || from === to) return;
 
+  // The dialog guarantees clean divisions in both directions; the floor here
+  // is a defensive backstop only.
   const converted = Math.floor((amount * fromMult) / toMult);
   if (converted <= 0) {
     ui.notifications.warn(game.i18n.localize("CRUCIBLE_PARTY_STASH.ExchangeNothing"));
     return;
   }
-
   const take = { [from]: amount };
   const give = { [to]: converted };
   const newPool = await _subtractCurrency(groupActor, take);
@@ -703,7 +704,16 @@ async function _exchangeCurrency(groupActor) {
   }));
 }
 
-/* ─── Exchange dialog: from / to / amount ─── */
+/* ─── Exchange dialog: from / to / amount (slider + box) ───
+ * The amount control is a paired slider + number box. The slider's step
+ * derives from the conversion direction:
+ *   downward (pp→gp, gp→sp): every amount divides cleanly → step 1
+ *   upward   (sp→gp, cp→gp): amount must be a multiple of toMult/fromMult
+ *                             → step = ratio (10, 100, 1000…)
+ * Box edits auto-round to the nearest step and clamp to the slider max, so
+ * an invalid amount can never be submitted. The slider max is the largest
+ * valid multiple that the pool's holding of the "from" denomination covers.
+ */
 
 async function _exchangeCurrencyDialog(denominations, pool) {
   const uid = foundry.utils.randomID();
@@ -737,28 +747,85 @@ async function _exchangeCurrencyDialog(denominations, pool) {
     </div>
     <div class="form-group">
       <label>${game.i18n.localize("CRUCIBLE_PARTY_STASH.ExchangeAmount")}</label>
-      <div class="form-fields">
-        <input id="stash-ex-amt-${uid}" type="number" min="1" value="1">
+      <div class="form-fields stash-exchange-amount">
+        <input id="stash-ex-slider-${uid}" type="range" min="0" max="0" step="1" value="0">
+        <input id="stash-ex-amt-${uid}" type="number" min="0" value="0">
       </div>
     </div>
+    <p class="hint stash-exchange-rate" id="stash-ex-rate-${uid}"></p>
     <p class="hint stash-exchange-preview" id="stash-ex-preview-${uid}"></p>
   </div>`;
 
-  // Live preview + same-denomination guard, via document-level delegated
-  // listeners (attached before the prompt, removed in finally). Delegation is
-  // used because DialogV2 renders asynchronously — the dialog element may not
-  // exist yet when prompt() is called, but these listeners cover it as soon
-  // as it is.
+  // Live preview + slider/box pairing + same-denomination guard, via
+  // document-level delegated listeners (attached before the prompt, removed
+  // in finally). Delegation is used because DialogV2 renders asynchronously —
+  // the dialog element may not exist yet when prompt() is called, but these
+  // listeners cover it as soon as it is.
   const rootSelector = `.stash-exchange-dialog`;
   const getFrom = () => document.getElementById(`stash-ex-from-${uid}`)?.value;
   const getTo = () => document.getElementById(`stash-ex-to-${uid}`)?.value;
   const getAmount = () => Math.trunc(Number(document.getElementById(`stash-ex-amt-${uid}`)?.value ?? 0));
+
+  // Step for the current from/to pair: ratio of multipliers when converting
+  // upward, 1 when converting downward (every amount divides cleanly).
+  const computeStep = (from, to) => {
+    const fromMult = cfg[from]?.multiplier ?? 0;
+    const toMult = cfg[to]?.multiplier ?? 0;
+    if (!fromMult || !toMult || from === to) return 0;
+    return (toMult > fromMult) ? (toMult / fromMult) : 1;
+  };
+
   const computeConverted = (from, to, amount) => {
     const fromMult = cfg[from]?.multiplier ?? 0;
     const toMult = cfg[to]?.multiplier ?? 0;
-    if (!fromMult || !toMult || fromMult <= toMult) return null;
-    return Math.floor((amount * fromMult) / toMult);
+    if (!fromMult || !toMult || from === to) return null;
+    return (amount * fromMult) / toMult;
   };
+
+  // Re-derive slider step/max and snap the current value. Called on From or
+  // To change. Max is the largest valid multiple covered by the pool holding.
+  const refreshSlider = () => {
+    const from = getFrom();
+    const to = getTo();
+    const slider = document.getElementById(`stash-ex-slider-${uid}`);
+    const box = document.getElementById(`stash-ex-amt-${uid}`);
+    const rateEl = document.getElementById(`stash-ex-rate-${uid}`);
+    if (!slider || !box) return;
+
+    const step = computeStep(from, to);
+    const holding = pool[from] ?? 0;
+    if (!step) {
+      slider.disabled = true;
+      slider.max = 0;
+      if (rateEl) rateEl.textContent = "";
+      return;
+    }
+    const max = Math.floor(holding / step) * step;
+    slider.disabled = max <= 0;
+    slider.min = 0;
+    slider.max = max;
+    slider.step = step;
+    box.min = 0;
+    box.max = max;
+    box.step = step;
+
+    // Snap the current value to the nearest valid step and clamp to max
+    const current = getAmount();
+    const snapped = Math.min(Math.round(current / step) * step, max);
+    box.value = String(Math.max(snapped, 0));
+    slider.value = String(Math.max(snapped, 0));
+
+    // Rate hint, e.g. "10 sp = 1 gp"
+    if (rateEl) {
+      rateEl.textContent = (step > 1)
+        ? game.i18n.format("CRUCIBLE_PARTY_STASH.ExchangeRate", {
+            fromAmount: `${step}${game.i18n.localize(cfg[from].abbreviation)}`,
+            toAmount: `1${game.i18n.localize(cfg[to].abbreviation)}`
+          })
+        : "";
+    }
+  };
+
   const refreshPreview = () => {
     const el = document.getElementById(`stash-ex-preview-${uid}`);
     if (!el) return;
@@ -774,8 +841,10 @@ async function _exchangeCurrencyDialog(denominations, pool) {
         })
       : "";
   };
+
   // Rebuild "To" options without the chosen "From" denomination — selecting
-  // the same denomination would be a no-op exchange.
+  // the same denomination would be a no-op exchange — then re-derive the
+  // slider for the new pair.
   const onFromChange = () => {
     const toSel = document.getElementById(`stash-ex-to-${uid}`);
     if (!toSel) return;
@@ -786,16 +855,43 @@ async function _exchangeCurrencyDialog(denominations, pool) {
       .join("");
     // Preserve the user's "To" choice if it's still valid
     if ([...toSel.options].some(o => o.value === currentTo)) toSel.value = currentTo;
+    refreshSlider();
+    refreshPreview();
+  };
+
+  // Slider drag → mirror into the box. Box edits → round to the nearest
+  // step, clamp to max, and mirror into the slider.
+  const onDelegatedInput = (ev) => {
+    if (!ev.target.closest?.(rootSelector)) return;
+    if (ev.target.id === `stash-ex-slider-${uid}`) {
+      const box = document.getElementById(`stash-ex-amt-${uid}`);
+      if (box) box.value = ev.target.value;
+      refreshPreview();
+      return;
+    }
+    if (ev.target.id === `stash-ex-amt-${uid}`) {
+      const slider = document.getElementById(`stash-ex-slider-${uid}`);
+      const step = computeStep(getFrom(), getTo()) || 1;
+      const max = Number(slider?.max ?? 0);
+      const raw = Math.trunc(Number(ev.target.value ?? 0));
+      const snapped = Math.min(Math.round(raw / step) * step, max);
+      const clamped = Math.max(snapped, 0);
+      if (Number.isFinite(clamped)) {
+        ev.target.value = String(clamped);
+        if (slider) slider.value = String(clamped);
+      }
+      refreshPreview();
+      return;
+    }
     refreshPreview();
   };
   const onDelegatedChange = (ev) => {
     if (!ev.target.closest?.(rootSelector)) return;
     if (ev.target.id === `stash-ex-from-${uid}`) onFromChange();
-    else refreshPreview();
-  };
-  const onDelegatedInput = (ev) => {
-    if (!ev.target.closest?.(rootSelector)) return;
-    refreshPreview();
+    else if (ev.target.id === `stash-ex-to-${uid}`) {
+      refreshSlider();
+      refreshPreview();
+    } else refreshPreview();
   };
   document.addEventListener("change", onDelegatedChange, true);
   document.addEventListener("input", onDelegatedInput, true);
@@ -825,7 +921,11 @@ async function _exchangeCurrencyDialog(denominations, pool) {
           const to = document.getElementById(`stash-ex-to-${uid}`)?.value;
           const amount = Math.trunc(Number(document.getElementById(`stash-ex-amt-${uid}`)?.value ?? 0));
           if (!from || !to || !Number.isFinite(amount) || amount < 1) return null;
-          if (from === to || (cfg[from]?.multiplier ?? 0) <= (cfg[to]?.multiplier ?? 0)) return null;
+          if (from === to) return null;
+          // Defensive backstop: the UI guarantees clean divisions, but verify
+          const step = computeStep(from, to);
+          if (!step || amount % step !== 0) return null;
+          if (amount > (pool[from] ?? 0)) return null;
           return { from, to, amount };
         }
       },
