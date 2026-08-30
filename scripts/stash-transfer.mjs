@@ -707,23 +707,32 @@ async function _exchangeCurrency(groupActor) {
 
 async function _exchangeCurrencyDialog(denominations, pool) {
   const uid = foundry.utils.randomID();
-  const options = denominations.map(([key, denom]) => {
-    const label = denom.icon
+  const cfg = crucible?.CONFIG?.currency ?? {};
+  // "From" shows availability (you're limited by what the pool holds);
+  // "To" omits it — availability is meaningless for the receiving denomination.
+  const denomLabel = (key) => {
+    const denom = cfg[key];
+    return denom.icon
       ? `<img class="denom-icon" src="${denom.icon}" alt=""> ${game.i18n.localize(denom.abbreviation)}`
       : game.i18n.localize(denom.abbreviation);
-    return `<option value="${key}">${label} — ${pool[key] ?? 0} available</option>`;
-  }).join("");
+  };
+  const fromOptions = denominations.map(([key]) =>
+    `<option value="${key}">${denomLabel(key)} — ${pool[key] ?? 0} available</option>`
+  ).join("");
+  const toOptions = denominations.map(([key]) =>
+    `<option value="${key}">${denomLabel(key)}</option>`
+  ).join("");
   const contentHTML = `<div class="stash-dialog-content stash-exchange-dialog">
     <div class="form-group">
       <label>${game.i18n.localize("CRUCIBLE_PARTY_STASH.ExchangeFrom")}</label>
       <div class="form-fields">
-        <select id="stash-ex-from-${uid}">${options}</select>
+        <select id="stash-ex-from-${uid}">${fromOptions}</select>
       </div>
     </div>
     <div class="form-group">
       <label>${game.i18n.localize("CRUCIBLE_PARTY_STASH.ExchangeTo")}</label>
       <div class="form-fields">
-        <select id="stash-ex-to-${uid}">${options}</select>
+        <select id="stash-ex-to-${uid}">${toOptions}</select>
       </div>
     </div>
     <div class="form-group">
@@ -732,7 +741,74 @@ async function _exchangeCurrencyDialog(denominations, pool) {
         <input id="stash-ex-amt-${uid}" type="number" min="1" value="1">
       </div>
     </div>
+    <p class="hint stash-exchange-preview" id="stash-ex-preview-${uid}"></p>
   </div>`;
+
+  // Live preview + same-denomination guard, via document-level delegated
+  // listeners (attached before the prompt, removed in finally). Delegation is
+  // used because DialogV2 renders asynchronously — the dialog element may not
+  // exist yet when prompt() is called, but these listeners cover it as soon
+  // as it is.
+  const rootSelector = `.stash-exchange-dialog`;
+  const getFrom = () => document.getElementById(`stash-ex-from-${uid}`)?.value;
+  const getTo = () => document.getElementById(`stash-ex-to-${uid}`)?.value;
+  const getAmount = () => Math.trunc(Number(document.getElementById(`stash-ex-amt-${uid}`)?.value ?? 0));
+  const computeConverted = (from, to, amount) => {
+    const fromMult = cfg[from]?.multiplier ?? 0;
+    const toMult = cfg[to]?.multiplier ?? 0;
+    if (!fromMult || !toMult || fromMult <= toMult) return null;
+    return Math.floor((amount * fromMult) / toMult);
+  };
+  const refreshPreview = () => {
+    const el = document.getElementById(`stash-ex-preview-${uid}`);
+    if (!el) return;
+    const from = getFrom();
+    const to = getTo();
+    const amount = getAmount();
+    const converted = (from && to && Number.isFinite(amount) && amount >= 1)
+      ? computeConverted(from, to, amount)
+      : null;
+    el.textContent = (converted !== null && converted > 0)
+      ? game.i18n.format("CRUCIBLE_PARTY_STASH.ExchangeYields", {
+          toAmount: `${converted}${game.i18n.localize(cfg[to].abbreviation)}`
+        })
+      : "";
+  };
+  // Rebuild "To" options without the chosen "From" denomination — selecting
+  // the same denomination would be a no-op exchange.
+  const onFromChange = () => {
+    const toSel = document.getElementById(`stash-ex-to-${uid}`);
+    if (!toSel) return;
+    const currentTo = toSel.value;
+    toSel.innerHTML = denominations
+      .filter(([key]) => key !== getFrom())
+      .map(([key]) => `<option value="${key}">${denomLabel(key)}</option>`)
+      .join("");
+    // Preserve the user's "To" choice if it's still valid
+    if ([...toSel.options].some(o => o.value === currentTo)) toSel.value = currentTo;
+    refreshPreview();
+  };
+  const onDelegatedChange = (ev) => {
+    if (!ev.target.closest?.(rootSelector)) return;
+    if (ev.target.id === `stash-ex-from-${uid}`) onFromChange();
+    else refreshPreview();
+  };
+  const onDelegatedInput = (ev) => {
+    if (!ev.target.closest?.(rootSelector)) return;
+    refreshPreview();
+  };
+  document.addEventListener("change", onDelegatedChange, true);
+  document.addEventListener("input", onDelegatedInput, true);
+
+  // Fix up initial state once the dialog renders: exclude the default "From"
+  // from the "To" list and show the initial yield. Polling is used because
+  // DialogV2 renders asynchronously relative to this call.
+  const initPoll = setInterval(() => {
+    if (document.getElementById(`stash-ex-from-${uid}`)) {
+      clearInterval(initPoll);
+      onFromChange();
+    }
+  }, 50);
 
   try {
     const result = await foundry.applications.api.DialogV2.prompt({
@@ -749,6 +825,7 @@ async function _exchangeCurrencyDialog(denominations, pool) {
           const to = document.getElementById(`stash-ex-to-${uid}`)?.value;
           const amount = Math.trunc(Number(document.getElementById(`stash-ex-amt-${uid}`)?.value ?? 0));
           if (!from || !to || !Number.isFinite(amount) || amount < 1) return null;
+          if (from === to || (cfg[from]?.multiplier ?? 0) <= (cfg[to]?.multiplier ?? 0)) return null;
           return { from, to, amount };
         }
       },
@@ -758,6 +835,10 @@ async function _exchangeCurrencyDialog(denominations, pool) {
   } catch (err) {
     console.error(`${MODULE_ID} | _exchangeCurrencyDialog error:`, err);
     return { from: null, to: null, amount: 0 };
+  } finally {
+    clearInterval(initPoll);
+    document.removeEventListener("change", onDelegatedChange, true);
+    document.removeEventListener("input", onDelegatedInput, true);
   }
 }
 

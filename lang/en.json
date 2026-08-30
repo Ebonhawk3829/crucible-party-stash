@@ -67,5 +67,6 @@
   "CRUCIBLE_PARTY_STASH.ExchangeTo": "Convert To",
   "CRUCIBLE_PARTY_STASH.ExchangeAmount": "Amount",
   "CRUCIBLE_PARTY_STASH.ExchangeDone": "Exchanged {fromAmount} for {toAmount}.",
+  "CRUCIBLE_PARTY_STASH.ExchangeYields": "Yields: {toAmount}",
   "CRUCIBLE_PARTY_STASH.ExchangeNothing": "That conversion yields nothing at the target denomination."
 }

@@ -30,13 +30,17 @@ async function _renderStashHTML(items, isEditable, groupActor) {
     isStackable: _isStackable(item)
   }));
   try {
+    // Denomination chips render highest-value first (pp → cp)
+    const currencyList = Object.entries(crucible?.CONFIG?.currency ?? {})
+      .toSorted((a, b) => b[1].multiplier - a[1].multiplier)
+      .map(([key, denom]) => ({ key, ...denom }));
     return await foundry.applications.handlebars.renderTemplate(
       TEMPLATE_STASH,
       {
         items: localized, isEmpty: items.length === 0, isEditable,
         pool: _getCurrency(groupActor),
         shapedCurrency: _isShapedCurrency(),
-        currencyConfig: crucible?.CONFIG?.currency ?? {},
+        currencyList,
         isGM: game.user.isGM,
         formatCurrency: _formatCurrency
       }

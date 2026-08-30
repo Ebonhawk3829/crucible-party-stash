@@ -1,10 +1,10 @@
 <div class="stash-currency-section">
   <div class="stash-currency-pool">
     {{#if shapedCurrency}}
-      {{#each currencyConfig}}
+      {{#each currencyList}}
         <span class="stash-denom-chip" data-tooltip="{{localize this.label}}">
           {{#if this.icon}}<img class="denom-icon" src="{{this.icon}}" alt="{{localize this.abbreviation}}">{{/if}}
-          <span class="denom-count">{{lookup ../pool @key}}</span>
+          <span class="denom-count">{{lookup ../pool this.key}}</span>
         </span>
       {{/each}}
     {{else}}
