@@ -252,6 +252,7 @@
   align-items: center;
   gap: 0.5rem;
   min-width: 0;
+  flex-wrap: wrap;
 }
 
 .crucible.actor-group .stash-currency-pool i {
@@ -265,6 +266,58 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Shaped-mode denomination chips */
+.crucible.actor-group .stash-denom-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: var(--font-size-13, 0.8125rem);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.crucible.actor-group .stash-denom-chip .denom-icon {
+  width: 16px;
+  height: 16px;
+  border: none;
+  object-fit: contain;
+}
+
+/* Denomination input fields in currency dialogs */
+.stash-currency-dialog .stash-denom-field,
+.stash-split-dialog .stash-denom-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stash-currency-dialog .stash-denom-field label,
+.stash-split-dialog .stash-denom-field label {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 3rem;
+  justify-content: flex-end;
+}
+
+.stash-currency-dialog .denom-icon,
+.stash-split-dialog .denom-icon,
+.stash-exchange-dialog .denom-icon {
+  width: 20px;
+  height: 20px;
+  border: none;
+  object-fit: contain;
+}
+
+.stash-currency-dialog .denom-abbr,
+.stash-split-dialog .denom-abbr {
+  font-weight: 600;
+  font-size: var(--font-size-12, 0.75rem);
 }
 
 .crucible.actor-group .stash-currency-section .controls {

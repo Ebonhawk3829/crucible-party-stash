@@ -28,6 +28,8 @@
   "CRUCIBLE_PARTY_STASH.StashFull": "The party stash is full! Maximum {capacity} items allowed. Remove some items or increase the capacity in module settings.",
   "CRUCIBLE_PARTY_STASH.ConfirmTransfer": "Confirm item transfers",
   "CRUCIBLE_PARTY_STASH.ConfirmTransferHint": "Show a confirmation dialog when moving items between characters and the stash.",
+  "CRUCIBLE_PARTY_STASH.ShapedCurrency": "Shaped Currency Pool",
+  "CRUCIBLE_PARTY_STASH.ShapedCurrencyHint": "ON: the pool is a literal pile of coins — platinum, gold, silver, and copper are tracked and spent separately, with no automatic conversion. Use the GM Exchange button to make change. OFF: the pool is an abstract purse — denominations are freely interchangeable and totals are shown in the largest possible denominations. Switching this setting reshapes the existing pool immediately.",
   "CRUCIBLE_PARTY_STASH.NoMembers": "No party members available. Add characters to the group first.",
   "CRUCIBLE_PARTY_STASH.Recipient": "Recipient",
   "CRUCIBLE_PARTY_STASH.Quantity": "Qty",
@@ -57,5 +59,13 @@
   "CRUCIBLE_PARTY_STASH.CreateCurrencyTitle": "Create Currency",
   "CRUCIBLE_PARTY_STASH.CreateCurrencyLabel": "Amount to Create",
   "CRUCIBLE_PARTY_STASH.CurrencyCreated": "{amount} added to the party pool.",
-  "CRUCIBLE_PARTY_STASH.CharacterBroke": "{target} has no currency to deposit."
+  "CRUCIBLE_PARTY_STASH.CharacterBroke": "{target} has no currency to deposit.",
+  "CRUCIBLE_PARTY_STASH.CurrencyAvailable": "Available: {amount}",
+  "CRUCIBLE_PARTY_STASH.ExchangeTitle": "Exchange Currency",
+  "CRUCIBLE_PARTY_STASH.Exchange": "Exchange",
+  "CRUCIBLE_PARTY_STASH.ExchangeFrom": "Convert From",
+  "CRUCIBLE_PARTY_STASH.ExchangeTo": "Convert To",
+  "CRUCIBLE_PARTY_STASH.ExchangeAmount": "Amount",
+  "CRUCIBLE_PARTY_STASH.ExchangeDone": "Exchanged {fromAmount} for {toAmount}.",
+  "CRUCIBLE_PARTY_STASH.ExchangeNothing": "That conversion yields nothing at the target denomination."
 }

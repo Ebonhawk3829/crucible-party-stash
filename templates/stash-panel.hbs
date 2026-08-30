@@ -1,7 +1,16 @@
 <div class="stash-currency-section">
   <div class="stash-currency-pool">
-    <i class="fa-solid fa-coins"></i>
-    <span class="stash-currency-amount">{{formatCurrency pool}}</span>
+    {{#if shapedCurrency}}
+      {{#each currencyConfig}}
+        <span class="stash-denom-chip" data-tooltip="{{localize this.label}}">
+          {{#if this.icon}}<img class="denom-icon" src="{{this.icon}}" alt="{{localize this.abbreviation}}">{{/if}}
+          <span class="denom-count">{{lookup ../pool @key}}</span>
+        </span>
+      {{/each}}
+    {{else}}
+      <i class="fa-solid fa-coins"></i>
+      <span class="stash-currency-amount">{{formatCurrency pool}}</span>
+    {{/if}}
   </div>
   {{#if isEditable}}
   <div class="controls">
@@ -21,6 +30,13 @@
        aria-label="{{localize "CRUCIBLE_PARTY_STASH.CreateCurrencyTitle"}}">
       <i class="fa-solid fa-plus"></i>
     </a>
+    {{#if shapedCurrency}}
+    <a class="control" data-stash-action="currencyExchange"
+       data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.ExchangeTitle"}}"
+       aria-label="{{localize "CRUCIBLE_PARTY_STASH.ExchangeTitle"}}">
+      <i class="fa-solid fa-right-left"></i>
+    </a>
+    {{/if}}
     <a class="control" data-stash-action="currencySplit"
        data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.SplitCurrencyTitle"}}"
        aria-label="{{localize "CRUCIBLE_PARTY_STASH.SplitCurrencyTitle"}}">

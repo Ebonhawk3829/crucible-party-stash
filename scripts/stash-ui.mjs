@@ -10,11 +10,11 @@ import {
   MODULE_ID,
   _readStash, _getStash, _setStash, _checkStashCapacity,
   _isStackable, _stashEntryMatches, _withStashLock,
-  _getCurrency, _formatCurrency
+  _getCurrency, _formatCurrency, _isShapedCurrency
 } from "./stash-data.mjs";
 import {
   _promptQuantity, _pickRecipient, _initiateTransferToActor,
-  _takeCurrency, _splitCurrency, _depositCurrency, _createCurrency
+  _takeCurrency, _splitCurrency, _depositCurrency, _createCurrency, _exchangeCurrency
 } from "./stash-transfer.mjs";
 
 export const TEMPLATE_STASH = `modules/${MODULE_ID}/templates/stash-panel.hbs`;
@@ -35,6 +35,8 @@ async function _renderStashHTML(items, isEditable, groupActor) {
       {
         items: localized, isEmpty: items.length === 0, isEditable,
         pool: _getCurrency(groupActor),
+        shapedCurrency: _isShapedCurrency(),
+        currencyConfig: crucible?.CONFIG?.currency ?? {},
         isGM: game.user.isGM,
         formatCurrency: _formatCurrency
       }
@@ -262,6 +264,11 @@ function _activateStashActionListeners(stashTab, groupActor) {
 
     if (action === "currencyCreate") {
       await _createCurrency(groupActor);
+      return;
+    }
+
+    if (action === "currencyExchange") {
+      await _exchangeCurrency(groupActor);
       return;
     }
 

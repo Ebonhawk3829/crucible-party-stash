@@ -20,6 +20,8 @@ Adds a **Stash** tab to the Group Actor sheet where players can pool items, dist
 - **Auto-Merge** — Stashing an item that matches an existing stash entry (same type, affixes, quality) increments the existing entry's quantity instead of creating a duplicate.
 - **Give to Character** — Click the give button to hand an item directly to any party member via a dropdown picker.
 - **Capacity Limit** — Set a maximum number of stash slots the stash can hold (0 = unlimited). Merged entries reuse existing slots.
+- **Party Currency Pool** — A shared currency pool on the Stash tab with deposit, take, GM create, and GM split flows. All amounts are entered per denomination (pp/gp/sp/cp).
+- **Shaped or Shapeless Currency** — Configure the pool as a literal pile of coins (denominations tracked separately, GM exchange to make change) or an abstract purse (freely interchangeable, matching how character currency works).
 - **Role-Based Access** — Configure the minimum user role required to see and use the stash. GMs always have access.
 - **Quantity Display** — Shows item quantities for stackable Crucible items.
 
@@ -57,6 +59,7 @@ All settings are world-scoped and configurable by the GM under **Settings** → 
 | Stash Capacity | 0 (unlimited) | Maximum number of stash slots. Merged entries reuse existing slots. Set to 0 for no limit. |
 | Confirm Transfer | Enabled | For single items, show a confirmation dialog when moving to the stash. For stacks, a quantity prompt is always shown regardless of this setting. |
 | Minimum Role | Player | The minimum user role required to see and interact with the stash tab. |
+| Shaped Currency Pool | Enabled | **ON:** the pool is a literal pile of coins — pp/gp/sp/cp are tracked and spent separately, with no automatic conversion. Use the GM **Exchange** button to make change (e.g. 1pp → 10gp). **OFF:** the pool is an abstract purse — denominations are freely interchangeable and totals display in the largest possible denominations. Switching this setting reshapes the existing pool immediately. |
 
 ## Usage
 

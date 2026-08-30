@@ -31,6 +31,12 @@ Hooks.once("init", async () => {
     scope: "world", config: true, type: Boolean, default: true
   });
 
+  game.settings.register(MODULE_ID, "shapedCurrency", {
+    name: "CRUCIBLE_PARTY_STASH.ShapedCurrency",
+    hint: "CRUCIBLE_PARTY_STASH.ShapedCurrencyHint",
+    scope: "world", config: true, type: Boolean, default: true
+  });
+
   game.settings.register(MODULE_ID, "minRole", {
     name: "CRUCIBLE_PARTY_STASH.MinRole",
     hint: "CRUCIBLE_PARTY_STASH.MinRoleHint",

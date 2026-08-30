@@ -105,46 +105,146 @@ export function canUseStash() {
 }
 
 /* ─── Currency Pool ───
- * The party currency pool is a single integer stored in base currency units
- * (cp, multiplier=1), matching how CrucibleActor stores system.currency.
- * Denomination breakdown for display is derived via crucible.CONFIG.currency.
+ * The party currency pool is stored as a shaped object {pp, gp, sp, cp}
+ * (zero-filled, all keys present). A world setting (shapedCurrency) selects
+ * the pool's semantics:
+ *
+ *   shaped   (default) — a literal pile of coins. Each denomination is
+ *             tracked and spent separately; no automatic conversion. A pool
+ *             of 10pp cannot pay a 5gp cost until the GM exchanges.
+ *   shapeless           — an abstract purse. The pool is summed to base
+ *             units and displayed via greedy allocation, matching how
+ *             CrucibleActor stores character currency. Any denomination
+ *             can satisfy any amount.
+ *
+ * Pools written by v1.5.0 (a plain integer) are migrated to shaped form on
+ * first read via allocateCurrency.
  */
 
+/** Zero-filled shaped pool in configured denomination order (largest first). */
+function _emptyShape() {
+  const shape = {};
+  for (const key of Object.keys(crucible?.CONFIG?.currency ?? {})) shape[key] = 0;
+  return shape;
+}
+
+/** Normalize any stored pool value into a zero-filled shaped object. */
+function _normalizeShape(raw) {
+  const shape = _emptyShape();
+  if (Number.isFinite(raw)) {
+    // v1.5.0 integer pool — migrate via greedy allocation
+    const allocated = crucible.api.documents.CrucibleActor.allocateCurrency(Math.max(Math.trunc(raw), 0));
+    for (const key of Object.keys(shape)) shape[key] = allocated[key] ?? 0;
+    return shape;
+  }
+  if (raw && typeof raw === "object") {
+    for (const key of Object.keys(shape)) {
+      const v = raw[key];
+      shape[key] = Number.isFinite(v) ? Math.max(Math.trunc(v), 0) : 0;
+    }
+  }
+  return shape;
+}
+
+/** Sum a shaped object into base currency units. */
+function _shapeToBase(shape) {
+  const cfg = crucible?.CONFIG?.currency ?? {};
+  let total = 0;
+  for (const [key, count] of Object.entries(shape)) {
+    total += (count ?? 0) * (cfg[key]?.multiplier ?? 0);
+  }
+  return total;
+}
+
+/** Whether the pool operates in shaped (per-denomination) mode. */
+export function _isShapedCurrency() {
+  return game.settings.get(MODULE_ID, "shapedCurrency");
+}
+
 /**
- * Read the party currency pool from the group actor.
+ * Read the party currency pool as a zero-filled shaped object.
  * @param {Actor} groupActor
- * @returns {number} pool amount in base currency units, never negative
+ * @returns {Record<string, number>} {pp, gp, sp, cp} (keys follow crucible.CONFIG.currency)
  */
 export function _getCurrency(groupActor) {
-  const raw = groupActor.getFlag(MODULE_ID, "currency");
-  return Number.isFinite(raw) ? Math.max(Math.trunc(raw), 0) : 0;
+  return _normalizeShape(groupActor.getFlag(MODULE_ID, "currency"));
 }
 
 /**
- * Write the party currency pool to the group actor.
+ * Write the party currency pool from a shaped object.
  * @param {Actor} groupActor
- * @param {number} amount  pool amount in base currency units
+ * @param {Record<string, number>} shape
  */
-export async function _setCurrency(groupActor, amount) {
-  await groupActor.setFlag(MODULE_ID, "currency", Math.max(Math.trunc(amount), 0));
+export async function _setCurrency(groupActor, shape) {
+  await groupActor.setFlag(MODULE_ID, "currency", _normalizeShape(shape));
 }
 
 /**
- * Format a base-unit currency amount as a human-readable string with
- * denomination abbreviations, e.g. 1234 → "1pp 2gp 3sp 4cp".
- * Mirrors CrucibleItem.formatCurrency but without needing an Item instance.
- * @param {number} amount  amount in base currency units
+ * Add a shaped amount to the pool. In shapeless mode the amounts are summed
+ * to base units and re-allocated greedily (matching v1.5.0 behavior); in
+ * shaped mode each denomination is added separately.
+ * @param {Actor} groupActor
+ * @param {Record<string, number>} amounts  per-denomination counts to add
+ */
+export async function _addCurrency(groupActor, amounts) {
+  const add = _normalizeShape(amounts);
+  return _withStashLock(groupActor.id, async () => {
+    const current = _getCurrency(groupActor);
+    if (_isShapedCurrency()) {
+      for (const key of Object.keys(current)) current[key] += add[key] ?? 0;
+    } else {
+      const total = _shapeToBase(current) + _shapeToBase(add);
+      Object.assign(current, _normalizeShape(crucible.api.documents.CrucibleActor.allocateCurrency(total)));
+    }
+    await _setCurrency(groupActor, current);
+    return current;
+  });
+}
+
+/**
+ * Subtract a shaped amount from the pool. In shaped mode the subtraction is
+ * per-denomination and fails (returns null) if any denomination is
+ * insufficient. In shapeless mode the amounts are summed and compared
+ * against the pool's base-unit total.
+ * @param {Actor} groupActor
+ * @param {Record<string, number>} amounts  per-denomination counts to remove
+ * @returns {Promise<Record<string, number>|null>} the new pool, or null if insufficient
+ */
+export async function _subtractCurrency(groupActor, amounts) {
+  const sub = _normalizeShape(amounts);
+  return _withStashLock(groupActor.id, async () => {
+    const current = _getCurrency(groupActor);
+    if (_isShapedCurrency()) {
+      for (const key of Object.keys(current)) {
+        if (current[key] < (sub[key] ?? 0)) return null;
+      }
+      for (const key of Object.keys(current)) current[key] -= (sub[key] ?? 0);
+    } else {
+      const total = _shapeToBase(current) - _shapeToBase(sub);
+      if (total < 0) return null;
+      Object.assign(current, _normalizeShape(crucible.api.documents.CrucibleActor.allocateCurrency(total)));
+    }
+    await _setCurrency(groupActor, current);
+    return current;
+  });
+}
+
+/**
+ * Format a shaped pool/amount for display. Shaped mode shows each
+ * denomination as stored (omitting zeros); shapeless mode shows the greedy
+ * allocation of the base-unit total.
+ * @param {Record<string, number>|number} amount  shaped object or base-unit total
  * @returns {string}
  */
 export function _formatCurrency(amount) {
   const cfg = crucible?.CONFIG?.currency;
   if (!cfg) return String(amount);
+  const shape = (typeof amount === "object" && amount !== null)
+    ? _normalizeShape(amount)
+    : _normalizeShape(crucible.api.documents.CrucibleActor.allocateCurrency(Math.max(Math.trunc(amount), 0)));
   const parts = [];
-  let remaining = amount;
-  const denominations = Object.entries(cfg).toSorted((a, b) => b[1].multiplier - a[1].multiplier);
-  for (const [key, denom] of denominations) {
-    const count = Math.floor(remaining / denom.multiplier);
-    remaining -= count * denom.multiplier;
+  for (const [key, denom] of Object.entries(cfg).toSorted((a, b) => b[1].multiplier - a[1].multiplier)) {
+    const count = shape[key] ?? 0;
     if (count) parts.push(`${count}${game.i18n.localize(denom.abbreviation)}`);
   }
   return parts.join(" ") || "0";
