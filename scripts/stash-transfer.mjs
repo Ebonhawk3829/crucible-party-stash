@@ -13,7 +13,7 @@ import {
   _readStash, _getStash, _setStash,
   _isStackable, _stashEntryMatches, _withStashLock,
   _getCurrency, _setCurrency, _addCurrency, _subtractCurrency,
-  _formatCurrency, _resolveGroupMembers, _isShapedCurrency
+  _formatCurrency, _resolveGroupMembers, _isShapedCurrency, _log
 } from "./stash-data.mjs";
 
 /* Prevent double-fire when both the capturing drop listener and
@@ -74,6 +74,7 @@ async function _promptQuantity(label, max, title, initial = 1) {
 /* ─── Recipient picker dialog ─── */
 
 async function _pickRecipient(choices, title) {
+  _log("_pickRecipient: opening", { title, choices });
   const recipId = `stash-recip-${foundry.utils.randomID()}`;
   const contentHTML = `<div class="stash-dialog-content">
     <div class="form-group">
@@ -87,7 +88,7 @@ async function _pickRecipient(choices, title) {
   </div>`;
 
   try {
-    return await foundry.applications.api.DialogV2.prompt({
+    const picked = await foundry.applications.api.DialogV2.prompt({
       window: {
         title: title ?? game.i18n.localize("CRUCIBLE_PARTY_STASH.GiveItem"),
         icon: "fa-solid fa-hand-holding"
@@ -103,8 +104,11 @@ async function _pickRecipient(choices, title) {
       },
       rejectClose: false
     });
+    _log("_pickRecipient: result", picked);
+    return picked;
   } catch (err) {
     console.error(`${MODULE_ID} | _pickRecipient error:`, err);
+    _log("_pickRecipient: THREW — dialog never returned a value", err);
     return null;
   }
 }
@@ -123,6 +127,12 @@ async function _transferFromStash(groupActor, stashId, targetActor, quantity) {
     const entryIdx = stash.findIndex(e => e._stashId === stashId);
     if (entryIdx === -1) return null;
     const entry = stash[entryIdx];
+    _log("_transferFromStash", {
+      entry: entry.name,
+      target: targetActor.name,
+      targetOwner: targetActor.testUserPermission(game.user, "OWNER"),
+      quantity
+    });
 
     const entryQty = entry.system?.quantity ?? 1;
     const takeQty = (quantity !== undefined) ? Math.min(quantity, entryQty) : entryQty;
@@ -176,6 +186,12 @@ async function _initiateTransferToActor(groupActor, stashId, targetActor) {
   // Read outside lock for dialog — entry snapshot may be stale, validated inside lock
   const stash = _readStash(groupActor);
   const entry = stash.find(e => e._stashId === stashId);
+  _log("_initiateTransferToActor", {
+    stashId,
+    found: !!entry,
+    target: targetActor?.name,
+    targetOwner: targetActor?.testUserPermission(game.user, "OWNER")
+  });
   if (!entry) return null;
 
   const entryQty = entry.system?.quantity ?? 1;
@@ -203,8 +219,15 @@ export async function onDropActorSheetData(targetActor, sheet, data) {
   const groupActor = game.actors.get(data.groupActorId);
   if (!groupActor) return;
 
-  const name = await _initiateTransferToActor(groupActor, data.stashId, targetActor);
-  if (name) ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.ItemMovedTo", { name, target: targetActor.name }));
+  try {
+    const name = await _initiateTransferToActor(groupActor, data.stashId, targetActor);
+    if (name) ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.ItemMovedTo", { name, target: targetActor.name }));
+  } catch (err) {
+    // Without this the rejection is unhandled and the drop appears to do
+    // nothing — most often when the user lacks OWNER on the target actor.
+    console.error(`${MODULE_ID} | Stash drop to ${targetActor.name} failed`, err);
+    ui.notifications.error(game.i18n.format("CRUCIBLE_PARTY_STASH.GiveFailed", { target: targetActor.name }));
+  }
 }
 
 /* ─── Stash → V2 hero sheet (direct drop interception) ─── */
@@ -232,8 +255,13 @@ export function _setupHeroDropInterception(app, element) {
       _handledStashDrops.add(data.stashId);
       const groupActor = game.actors.get(data.groupActorId);
       if (!groupActor) return;
-      const name = await _initiateTransferToActor(groupActor, data.stashId, app.actor);
-      if (name) ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.ItemMovedTo", { name, target: app.actor.name }));
+      try {
+        const name = await _initiateTransferToActor(groupActor, data.stashId, app.actor);
+        if (name) ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.ItemMovedTo", { name, target: app.actor.name }));
+      } catch (err) {
+        console.error(`${MODULE_ID} | Stash drop to ${app.actor.name} failed`, err);
+        ui.notifications.error(game.i18n.format("CRUCIBLE_PARTY_STASH.GiveFailed", { target: app.actor.name }));
+      }
     } finally {
       _handledStashDrops.delete(data.stashId);
     }

@@ -138,13 +138,22 @@
   padding: 0;
 }
 
+/* Fixed-width controls column: the row is a grid, not a flex row, so the
+   title zone cannot grow or shrink when a row has 2 buttons instead of 3.
+   --stash-controls-width is the "left margin" the controls align to. */
 .crucible.actor-group .stash-list .stash-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--stash-controls-width, 5.25rem);
   align-items: center;
   gap: 0.5rem;
   padding: 0.35rem 0.5rem;
   border-bottom: 1px solid var(--color-border-light-1, #333);
   transition: background 0.15s;
+}
+
+/* Read-only view renders no .controls at all — collapse the reserved column. */
+.crucible.actor-group .stash-list.no-controls .stash-item {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .crucible.actor-group .stash-list .stash-item:last-child {
@@ -156,10 +165,10 @@
 }
 
 .crucible.actor-group .stash-list .stash-item .stash-tooltip-zone {
-  display: flex;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
   align-items: center;
   gap: 0.5rem;
-  flex: 1;
   min-width: 0;
 }
 
@@ -172,7 +181,6 @@
 }
 
 .crucible.actor-group .stash-list .stash-item .title {
-  flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -202,8 +210,9 @@
 
 .crucible.actor-group .stash-list .stash-item .controls {
   display: flex;
+  justify-content: flex-end;
   gap: 0.25rem;
-  flex: 0 0 auto;
+  min-width: 0;
   -webkit-user-drag: none;
 }
 
@@ -221,6 +230,14 @@
   background: rgba(255, 255, 255, 0.1);
 }
 
+/* Inert spacer occupying one control slot so every row's controls column
+   is the same width regardless of how many actions that row offers. */
+.crucible.actor-group .stash-list .stash-item .controls .control.placeholder {
+  visibility: hidden;
+  pointer-events: none;
+  padding: 0.2rem 0.3rem;
+}
+
 .crucible.actor-group .stash-list .stash-item .controls .control[data-stash-action="remove"]:hover {
   color: var(--color-damage-2, #c33);
 }
@@ -231,6 +248,44 @@
 
 .crucible.actor-group .stash-list .stash-item .controls .control[data-stash-action="editQty"]:hover {
   color: var(--color-warm-2, #c33);
+}
+
+/* ─── Stash Type Groups ───
+ * Item type is rendered once as a group heading instead of as a tag on
+ * every card. Heading styling deliberately mirrors the old .tag treatment
+ * (uppercase, letter-spaced, muted) so the information reads the same.
+ * Only types with at least one entry produce a group. */
+
+.crucible.actor-group .stash-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.crucible.actor-group .stash-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.1rem 0.5rem 0.2rem;
+  border-bottom: 1px solid var(--color-border-dark, #444);
+}
+
+.crucible.actor-group .stash-group-header h3 {
+  margin: 0;
+  font-size: var(--font-size-11, 0.6875rem);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-text-light-highlight, #ccc);
+}
+
+.crucible.actor-group .stash-group-count {
+  font-size: var(--font-size-11, 0.6875rem);
+  padding: 0.05rem 0.35rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-text-light-highlight, #ccc);
+  line-height: 1.2;
 }
 
 /* ─── Currency Section ─── */

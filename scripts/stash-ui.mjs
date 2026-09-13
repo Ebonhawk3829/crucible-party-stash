@@ -10,7 +10,7 @@ import {
   MODULE_ID,
   _readStash, _getStash, _setStash, _checkStashCapacity,
   _isStackable, _stashEntryMatches, _withStashLock,
-  _getCurrency, _formatCurrency, _isShapedCurrency
+  _getCurrency, _formatCurrency, _isShapedCurrency, _resolveGroupMembers, _log
 } from "./stash-data.mjs";
 import {
   _promptQuantity, _pickRecipient, _initiateTransferToActor,
@@ -18,6 +18,106 @@ import {
 } from "./stash-transfer.mjs";
 
 export const TEMPLATE_STASH = `modules/${MODULE_ID}/templates/stash-panel.hbs`;
+
+/* ─── Item type grouping ───
+ * The item type is shown once as a group heading rather than as a tag on
+ * every card. Only types that count as *inventory* produce a heading —
+ * see _isInventoryType below.
+ *
+ * Order: the first five are Crucible's own verified sort order from
+ * BaseActorSheet#preparePhysicalItem:
+ *   {weapon: 1, armor: 2, accessory: 3, tool: 4, consumable: 5}
+ * Then the physical-but-non-equippable types, then Foundry's "base"
+ * fallback. Crucible defines no order for those three, so their placement
+ * here is our convention, not the system's.
+ *
+ * Note: "treasure" is NOT an item type — it is a loot *category*
+ * (SYSTEM.ITEM.LOOT_CATEGORIES: treasure / ingredient / other).
+ */
+const TYPE_GROUP_ORDER = [
+  "weapon", "armor", "accessory", "tool", "consumable",
+  "loot", "schematic",
+  "base"
+];
+
+/** Foundry's fallback Item type; Crucible routes it to the backpack section. */
+const BASE_TYPE = "base";
+
+/**
+ * Whether an item type belongs on an actor's Inventory tab — i.e. whether
+ * it is a physical object rather than a character option.
+ *
+ * Crucible's own rule (BaseActorSheet#prepareItems) is:
+ *   category = PHYSICAL_ITEM_TYPES.has(type) ? "physical" : type
+ * with "physical" and "base" both landing in the inventory sections, while
+ * talent / spell / ancestry / archetype / background / taxonomy go to their
+ * own tabs. We mirror that exactly.
+ *
+ * @param {string} type
+ * @returns {boolean}
+ */
+function _isInventoryType(type) {
+  const physical = SYSTEM?.ITEM?.PHYSICAL_ITEM_TYPES;
+  if (physical instanceof Set) return physical.has(type) || (type === BASE_TYPE);
+  // Constant unavailable (system version drift) — fall back to the
+  // hardcoded list so grouping still works rather than emptying the panel.
+  return TYPE_GROUP_ORDER.includes(type);
+}
+
+/**
+ * Bucket stash entries by item type, in a stable display order.
+ * Only types with at least one entry produce a group. Non-inventory types
+ * (talents, spells, ancestries…) are collected into a trailing "Other"
+ * group so nothing is ever silently hidden.
+ * @param {object[]} items  localized stash entries
+ * @returns {Array<{key: string, label: string, items: object[]}>}
+ */
+function _groupStashItems(items) {
+  const buckets = new Map();
+  let other = null;
+  for (const item of items) {
+    const key = item.type ?? "unknown";
+    if (!_isInventoryType(key)) {
+      other ??= {
+        key: "other",
+        label: game.i18n.localize("CRUCIBLE_PARTY_STASH.GroupOther"),
+        items: []
+      };
+      other.items.push(item);
+      continue;
+    }
+    if (!buckets.has(key)) buckets.set(key, { key, label: item.typeLabel, items: [] });
+    buckets.get(key).items.push(item);
+  }
+  const known = [];
+  const rest = [];
+  for (const group of buckets.values()) {
+    (TYPE_GROUP_ORDER.includes(group.key) ? known : rest).push(group);
+  }
+  known.sort((a, b) => TYPE_GROUP_ORDER.indexOf(a.key) - TYPE_GROUP_ORDER.indexOf(b.key));
+  rest.sort((a, b) => a.label.localeCompare(b.label));
+  if (other) rest.push(other);
+  return [...known, ...rest];
+}
+
+/**
+ * Whether the acting user can write to at least one party member.
+ * Giving an item creates an Item on the *recipient*, so it is gated on
+ * ownership of the recipient — not on ownership of the group actor.
+ * GMs pass implicitly (they hold OWNER on everything).
+ * @param {Actor} groupActor
+ * @returns {boolean}
+ */
+function _canGiveToAnyone(groupActor) {
+  const members = _resolveGroupMembers(groupActor);
+  const writable = members.filter(a => a.testUserPermission(game.user, "OWNER"));
+  _log("_canGiveToAnyone", {
+    memberCount: members.length,
+    writableCount: writable.length,
+    writable: writable.map(a => a.name)
+  });
+  return writable.length > 0;
+}
 
 /* ─── Render the stash panel HTML ─── */
 
@@ -29,6 +129,15 @@ async function _renderStashHTML(items, isEditable, groupActor) {
       : item.type,
     isStackable: _isStackable(item)
   }));
+  const groups = _groupStashItems(localized);
+  _log("_renderStashHTML", {
+    isEditable,
+    itemCount: items.length,
+    physicalTypes: SYSTEM?.ITEM?.PHYSICAL_ITEM_TYPES
+      ? Array.from(SYSTEM.ITEM.PHYSICAL_ITEM_TYPES)
+      : "UNAVAILABLE — using fallback list",
+    groups: groups.map(g => ({ key: g.key, label: g.label, count: g.items.length }))
+  });
   try {
     // Denomination chips render highest-value first (pp → cp)
     const currencyList = Object.entries(crucible?.CONFIG?.currency ?? {})
@@ -37,11 +146,12 @@ async function _renderStashHTML(items, isEditable, groupActor) {
     return await foundry.applications.handlebars.renderTemplate(
       TEMPLATE_STASH,
       {
-        items: localized, isEmpty: items.length === 0, isEditable,
+        items: localized, groups, isEmpty: items.length === 0, isEditable,
         pool: _getCurrency(groupActor),
         shapedCurrency: _isShapedCurrency(),
         currencyList,
         isGM: game.user.isGM,
+        canGive: _canGiveToAnyone(groupActor),
         formatCurrency: _formatCurrency
       }
     );
@@ -244,6 +354,12 @@ function _activateStashActionListeners(stashTab, groupActor) {
 
   stashTab.addEventListener("click", async (ev) => {
     const el = ev.target.closest("[data-stash-action]");
+    _log("click", {
+      target: ev.target,
+      matchedAction: el?.dataset?.stashAction ?? null,
+      stashId: el?.dataset?.stashId ?? null,
+      stashTabConnected: stashTab.isConnected
+    });
     if (!el) return;
     ev.preventDefault();
     ev.stopPropagation();
@@ -305,16 +421,40 @@ function _activateStashActionListeners(stashTab, groupActor) {
         return;
       }
 
+      // Giving creates an Item on the recipient, so only characters this user
+      // can actually write to are offered. Without this filter the picker
+      // lists every party member and the transfer fails silently for any the
+      // user doesn't own — the most common case being a player who owns the
+      // group sheet but not their party members' sheets.
+      const writable = actors.filter(a => a.testUserPermission(game.user, "OWNER"));
+      _log("give: recipient candidates", {
+        total: actors.length,
+        writable: writable.length,
+        names: writable.map(a => a.name)
+      });
+      if (!writable.length) {
+        _log("give: ABORT — no writable recipient");
+        ui.notifications.warn(game.i18n.localize("CRUCIBLE_PARTY_STASH.NoOwnedCharacter"));
+        return;
+      }
+
       const choices = {};
-      for (const actor of actors) choices[actor.id] = actor.name;
+      for (const actor of writable) choices[actor.id] = actor.name;
       const recipient = await _pickRecipient(choices);
       if (!recipient) return;
 
       const target = game.actors.get(recipient);
       if (!target) { ui.notifications.error(game.i18n.localize("CRUCIBLE_PARTY_STASH.RecipientNotFound")); return; }
 
-      const name = await _initiateTransferToActor(groupActor, stashId, target);
-      if (name) ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.ItemGiven", { name, target: target.name }));
+      try {
+        const name = await _initiateTransferToActor(groupActor, stashId, target);
+        if (name) ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.ItemGiven", { name, target: target.name }));
+      } catch (err) {
+        // _withStashLock logs and rethrows; without this the rejection is
+        // unhandled and the click appears to do nothing at all.
+        console.error(`${MODULE_ID} | Give to ${target.name} failed`, err);
+        ui.notifications.error(game.i18n.format("CRUCIBLE_PARTY_STASH.GiveFailed", { target: target.name }));
+      }
     }
   });
 

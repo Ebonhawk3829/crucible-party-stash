@@ -9,7 +9,7 @@
  *   stash-ui.mjs      — DOM construction, tab injection, event wiring
  * ──────────────────────────────────────────────────────────────── */
 
-import { MODULE_ID, _getStash, canUseStash } from "./stash-data.mjs";
+import { MODULE_ID, _getStash, canUseStash, _log } from "./stash-data.mjs";
 import { stashTooltip, onExternalDeactivate } from "./stash-tooltip.mjs";
 import { _setupHeroDropInterception, onDropActorSheetData } from "./stash-transfer.mjs";
 import {
@@ -53,6 +53,12 @@ Hooks.once("init", async () => {
     })
   });
 
+  game.settings.register(MODULE_ID, "debugLogging", {
+    name: "CRUCIBLE_PARTY_STASH.DebugLogging",
+    hint: "CRUCIBLE_PARTY_STASH.DebugLoggingHint",
+    scope: "client", config: true, type: Boolean, default: false
+  });
+
   await foundry.applications.handlebars.loadTemplates([TEMPLATE_STASH]);
 });
 
@@ -87,6 +93,14 @@ Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options)
   const isEditable = app.isEditable;
   const stashItems = _getStash(actor);
   const activeTab = app._stashActiveTab || "members";
+  _log("renderCrucibleGroupActorSheet", {
+    actorId: actor.id,
+    isEditable,
+    itemCount: stashItems.length,
+    isGM: game.user.isGM,
+    role: game.user.role,
+    canUseStash: canUseStash()
+  });
 
   const tabBar = document.createElement("nav");
   tabBar.className = "party-stash-tabs";

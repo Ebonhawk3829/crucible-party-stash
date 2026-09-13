@@ -7,6 +7,18 @@
 
 export const MODULE_ID = "crucible-party-stash";
 
+/* ─── Debug logging ───
+ * Gated on the client-scoped `debugLogging` setting so it can be toggled
+ * live from Module Settings without a reload. Wrapped in try/catch because
+ * it may be called before settings are registered or after teardown.
+ */
+export function _log(...args) {
+  try {
+    if (!game?.settings?.get(MODULE_ID, "debugLogging")) return;
+  } catch { return; }
+  console.log(`${MODULE_ID} |`, ...args);
+}
+
 /* ─── Stash Mutex ───
  * Per-actor serialized lock to prevent races from concurrent setFlag calls
  * (double-click, overlapping async operations, multiple group sheets).
@@ -260,10 +272,27 @@ export function _formatCurrency(amount) {
  */
 export function _resolveGroupMembers(groupActor) {
   const memberArray = groupActor.system.members ?? [];
+  _log("_resolveGroupMembers: raw", {
+    isArray: Array.isArray(memberArray),
+    hasActorsProp: !!memberArray.actors,
+    actorsSize: memberArray.actors?.size ?? null,
+    length: memberArray.length ?? null,
+    raw: memberArray
+  });
+
+  let resolved;
   if (memberArray.actors) {
-    return Array.from(memberArray.actors);
+    resolved = Array.from(memberArray.actors);
+  } else {
+    resolved = Array.from(memberArray)
+      .map(m => game.actors.get(m.actorId ?? m.id))
+      .filter(Boolean);
   }
-  return Array.from(memberArray)
-    .map(m => game.actors.get(m.actorId ?? m.id))
-    .filter(Boolean);
+
+  _log("_resolveGroupMembers: resolved", resolved.map(a => ({
+    id: a.id,
+    name: a.name,
+    owner: a.testUserPermission(game.user, "OWNER")
+  })));
+  return resolved;
 }
