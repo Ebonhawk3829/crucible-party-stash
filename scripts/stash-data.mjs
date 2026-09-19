@@ -312,6 +312,10 @@ export function _resolveGroupMembers(groupActor) {
  * To add a future migration: append an entry to STASH_MIGRATIONS with a
  * new unique id. Never reuse or edit an existing id — a world that has
  * already recorded it will silently skip the new behaviour.
+ *
+ * An entry may declare `requires`, a minimum Crucible version. A migration
+ * whose requirement is not met is deferred rather than recorded, so it still
+ * runs later once the system is updated.
  */
 
 /**
@@ -320,7 +324,7 @@ export function _resolveGroupMembers(groupActor) {
  * @type {ReadonlyArray<{id: string, fn: Function}>}
  */
 export const STASH_MIGRATIONS = Object.freeze([
-  { id: "resync-compendium-0.11.0", fn: _resyncStashFromCompendium }
+  { id: "resync-compendium-0.11.0", requires: "0.11.0", fn: _resyncStashFromCompendium }
 ]);
 
 /**
@@ -335,11 +339,22 @@ export async function _runPendingStashMigrations() {
   const completed = new Set(game.settings.get(MODULE_ID, "completedMigrations") ?? []);
   const ran = [];
 
-  for (const { id, fn } of STASH_MIGRATIONS) {
+  for (const { id, requires, fn } of STASH_MIGRATIONS) {
     if (completed.has(id)) {
       _log("migration: skip (already recorded)", { id });
       continue;
     }
+
+    // Version gate. If this migration targets a Crucible release newer than the
+    // one installed, defer it WITHOUT recording. Recording here would consume
+    // the migration's one-shot on the wrong system version, so it would never
+    // run after the user later updates Crucible.
+    const installed = game.system?.version ?? "0.0.0";
+    if (requires && foundry.utils.isNewerVersion(requires, installed)) {
+      _log("migration: deferred (needs newer Crucible)", { id, requires, installed });
+      continue;
+    }
+
     _log("migration: run", { id });
     let result;
     try {
@@ -434,7 +449,10 @@ export async function _resyncStashFromCompendium() {
       // rather than part of the upstream definition.
       if (entry.effects?.length) updated.effects = foundry.utils.deepClone(entry.effects);
 
-      if (foundry.utils.objectsEqual(entry, updated)) {
+      // foundry.utils.equals is the public deep-equality helper; there is no
+      // `objectsEqual`. Using a non-existent function here would throw on the
+      // first entry that actually needed updating.
+      if (foundry.utils.equals(entry, updated)) {
         stats.skipped++;
         next.push(entry);
         continue;
