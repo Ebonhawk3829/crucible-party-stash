@@ -40,6 +40,8 @@
   "CRUCIBLE_PARTY_STASH.ItemRemoved": "{name} removed from stash.",
   "CRUCIBLE_PARTY_STASH.ItemGiven": "{name} given to {target}.",
   "CRUCIBLE_PARTY_STASH.GiveFailed": "Could not give the item to {target}. You need ownership of that character's sheet.",
+  "CRUCIBLE_PARTY_STASH.ResyncComplete": "Party stash resynced: {updated} item(s) updated from compendium data, {skipped} left unchanged.",
+  "CRUCIBLE_PARTY_STASH.MigrationFailed": "Party stash migration \"{id}\" failed. Check the browser console for details.",
   "CRUCIBLE_PARTY_STASH.DebugLogging": "Debug Logging",
   "CRUCIBLE_PARTY_STASH.DebugLoggingHint": "Log detailed stash diagnostics to the browser console (F12). Enable this before reproducing a problem, then check the console for lines prefixed with 'crucible-party-stash'.",
   "CRUCIBLE_PARTY_STASH.ItemMovedTo": "{name} moved to {target}.",

@@ -296,3 +296,204 @@ export function _resolveGroupMembers(groupActor) {
   })));
   return resolved;
 }
+
+/* ─── One-Shot Stash Migrations ──────────────────────────────────
+ *
+ * Named, self-disabling migrations. Each is identified by a string key
+ * recorded in the world-scoped `completedMigrations` setting. On load we
+ * run every migration whose key is absent, then record it, so each one
+ * executes exactly once per world — ever.
+ *
+ * Why named keys rather than a single version number: a version number
+ * can only express "everything before N has run". Named keys let two
+ * unrelated migrations coexist, and let a migration added in a later
+ * release run on a world that already ran an earlier one.
+ *
+ * To add a future migration: append an entry to STASH_MIGRATIONS with a
+ * new unique id. Never reuse or edit an existing id — a world that has
+ * already recorded it will silently skip the new behaviour.
+ */
+
+/**
+ * The migrations which have been defined, in the order they should run.
+ * Each entry is `{id, fn}` where `fn` is async and returns a result object.
+ * @type {ReadonlyArray<{id: string, fn: Function}>}
+ */
+export const STASH_MIGRATIONS = Object.freeze([
+  { id: "resync-compendium-0.11.0", fn: _resyncStashFromCompendium }
+]);
+
+/**
+ * Run any stash migration which this world has not yet recorded.
+ * Safe to call on every load; recorded migrations are skipped.
+ *
+ * Caller must ensure this runs on exactly one client (the active GM) and
+ * after `crucible.migrating` has resolved.
+ * @returns {Promise<Array<{id: string, result: object}>>} Results for migrations that ran
+ */
+export async function _runPendingStashMigrations() {
+  const completed = new Set(game.settings.get(MODULE_ID, "completedMigrations") ?? []);
+  const ran = [];
+
+  for (const { id, fn } of STASH_MIGRATIONS) {
+    if (completed.has(id)) {
+      _log("migration: skip (already recorded)", { id });
+      continue;
+    }
+    _log("migration: run", { id });
+    let result;
+    try {
+      result = await fn();
+    } catch (err) {
+      // Record even on failure. A migration that throws every load is worse
+      // than one that ran partially; the error is surfaced to the GM and the
+      // manual resync button remains available for a retry.
+      console.error(`${MODULE_ID} | Migration "${id}" failed:`, err);
+      result = { error: err.message };
+    }
+    completed.add(id);
+    await game.settings.set(MODULE_ID, "completedMigrations", Array.from(completed));
+    ran.push({ id, result });
+  }
+  return ran;
+}
+
+/**
+ * Re-resolve every stash entry against its upstream compendium source.
+ *
+ * Stash entries are frozen `item.toObject()` snapshots. When Crucible
+ * updates an item's upstream data (as 0.11.0 did with a comprehensive
+ * copy-edit pass and a forced equipment re-sync), live items on actors
+ * update but stash snapshots do not, so the same item can show different
+ * name/price/weight depending on where you look at it.
+ *
+ * Mirrors Crucible's own `_migrateEquipmentItem`: replace `system` from
+ * upstream, then restore the fields which are genuinely player state.
+ *
+ * Entries with no resolvable compendium source (hand-made items) are
+ * skipped rather than discarded — we cannot know what they should be.
+ * @returns {Promise<{updated: number, skipped: number, unresolved: number, groups: number}>}
+ */
+export async function _resyncStashFromCompendium() {
+  const stats = { updated: 0, skipped: 0, unresolved: 0, groups: 0 };
+
+  // Every group actor in the world, not just the configured party — a world
+  // may hold several groups and each carries its own stash flag.
+  const groups = game.actors.filter(a => a.type === "group");
+  stats.groups = groups.length;
+
+  // Cache resolved upstream documents; many stash entries share a source.
+  const upstreamCache = new Map();
+
+  for (const groupActor of groups) {
+    const stash = _readStash(groupActor);
+    if (!stash.length) continue;
+
+    let changed = false;
+    const next = [];
+
+    for (const entry of stash) {
+      const upstream = await _resolveUpstream(entry, upstreamCache);
+
+      // No compendium lineage: a hand-made or imported item. Leave it alone.
+      if (!upstream) {
+        stats.skipped++;
+        next.push(entry);
+        continue;
+      }
+
+      const sourceUuid = entry._stats?.compendiumSource ?? null;
+      if (!sourceUuid) {
+        stats.unresolved++;
+        next.push(entry);
+        continue;
+      }
+
+      const upstreamSource = upstream.toObject();
+      const updated = {
+        ...entry,
+        name: upstreamSource.name,
+        img: upstreamSource.img,
+        type: upstreamSource.type,
+        system: foundry.utils.deepClone(upstreamSource.system)
+      };
+
+      // Restore player state that upstream must not clobber.
+      // Mirrors Crucible's stateFields, plus the stash's own bookkeeping.
+      const stateFields = [
+        ...(upstream.system?.constructor?.STATEFUL_FIELDS ?? []),
+        "quantity", "quality", "enchantment", "slot", "loaded", "uses"
+      ];
+      for (const field of stateFields) {
+        const value = entry.system?.[field];
+        if (value !== undefined) updated.system[field] = foundry.utils.deepClone(value);
+      }
+      updated._stashId = entry._stashId;
+
+      // Preserve embedded affix effects, which are player-applied enchantments
+      // rather than part of the upstream definition.
+      if (entry.effects?.length) updated.effects = foundry.utils.deepClone(entry.effects);
+
+      if (foundry.utils.objectsEqual(entry, updated)) {
+        stats.skipped++;
+        next.push(entry);
+        continue;
+      }
+
+      _log("resync: updated", {
+        group: groupActor.name,
+        before: entry.name,
+        after: updated.name
+      });
+      stats.updated++;
+      changed = true;
+      next.push(updated);
+    }
+
+    if (changed) await _setStash(groupActor, next);
+  }
+
+  _log("resync: complete", stats);
+  return stats;
+}
+
+/**
+ * Resolve the upstream compendium document for a stash entry.
+ * Prefers the recorded `compendiumSource` UUID, falling back to an
+ * identifier search across the configured equipment packs — the same
+ * fallback Crucible's own `#getBaseItemName` uses.
+ * @param {object} entry                     A stash entry
+ * @param {Map<string, object>} cache        Shared resolution cache
+ * @returns {Promise<object|null>}
+ */
+async function _resolveUpstream(entry, cache) {
+  const sourceUuid = entry._stats?.compendiumSource;
+  if (sourceUuid) {
+    if (cache.has(sourceUuid)) return cache.get(sourceUuid);
+    const doc = await fromUuid(sourceUuid).catch(() => null);
+    cache.set(sourceUuid, doc);
+    return doc;
+  }
+
+  // Fall back to an identifier search across configured equipment packs.
+  const identifier = entry.system?.identifier;
+  if (!identifier) return null;
+  const cacheKey = `id:${entry.type}:${identifier}`;
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+
+  let found = null;
+  for (const packId of crucible.CONFIG.packs.equipment ?? []) {
+    const pack = game.packs.get(packId);
+    if (!pack) continue;
+    if (!pack.indexed) await pack.getIndex();
+    for (const idx of pack.index.values()) {
+      if (idx.type === entry.type && idx.system?.identifier === identifier) {
+        found = await pack.getDocument(idx._id).catch(() => null);
+        break;
+      }
+    }
+    if (found) break;
+  }
+  cache.set(cacheKey, found);
+  return found;
+}

@@ -9,7 +9,7 @@
  *   stash-ui.mjs      — DOM construction, tab injection, event wiring
  * ──────────────────────────────────────────────────────────────── */
 
-import { MODULE_ID, _getStash, canUseStash, _log } from "./stash-data.mjs";
+import { MODULE_ID, _getStash, canUseStash, _log, _runPendingStashMigrations } from "./stash-data.mjs";
 import { stashTooltip, onExternalDeactivate } from "./stash-tooltip.mjs";
 import { _setupHeroDropInterception, onDropActorSheetData } from "./stash-transfer.mjs";
 import {
@@ -57,6 +57,14 @@ Hooks.once("init", async () => {
     name: "CRUCIBLE_PARTY_STASH.DebugLogging",
     hint: "CRUCIBLE_PARTY_STASH.DebugLoggingHint",
     scope: "client", config: true, type: Boolean, default: false
+  });
+
+  // Bookkeeping for one-shot stash migrations. World-scoped so every client
+  // agrees on what has run, and hidden from the settings UI — it is internal
+  // state, not a user preference. Each entry is a migration id; see
+  // STASH_MIGRATIONS in stash-data.mjs.
+  game.settings.register(MODULE_ID, "completedMigrations", {
+    scope: "world", config: false, type: Array, default: []
   });
 
   await foundry.applications.handlebars.loadTemplates([TEMPLATE_STASH]);
@@ -163,7 +171,45 @@ Hooks.on("renderActorSheetV2", (app, element) => {
 
 Hooks.on("dropActorSheetData", onDropActorSheetData);
 
-Hooks.once("ready", () => {
+Hooks.once("ready", async () => {
+  // Crucible 0.11.0 exposes `crucible.migrating`, a Promise which resolves once
+  // the world is known to be at the current system version. A world which needs
+  // migration never resolves it — migration always ends in a page reload, so we
+  // resume on the next load against fully migrated data instead.
+  //
+  // We only touch flags on user interaction (drag/drop, transfer), never at
+  // ready, so this is belt-and-braces rather than a live bug. It matters because
+  // 0.11.0's migration force-resets hero talents and re-syncs every owned
+  // equipment item from its compendium source: reading or writing stash flags
+  // mid-migration could persist against half-migrated actors.
+  const migrating = game.system?.migrating;
+  if (migrating instanceof Promise) {
+    _log("ready", { awaiting: "crucible.migrating" });
+    await migrating;
+    _log("ready", { awaiting: "crucible.migrating", resolved: true });
+  }
+
+  // One-shot stash migrations. Runs here rather than at `init` because it
+  // needs `game.actors` populated, compendium packs indexed, and Crucible's
+  // own migration finished — at `init` the upstream data we resync against
+  // may still be the pre-update version.
+  //
+  // Restricted to the active GM so exactly one client writes the flag.
+  if (game.users.activeGM?.isSelf) {
+    const ran = await _runPendingStashMigrations();
+    for (const { id, result } of ran) {
+      if (result.error) {
+        console.error(`${MODULE_ID} | Migration "${id}" failed: ${result.error}`);
+        ui.notifications.error(game.i18n.format("CRUCIBLE_PARTY_STASH.MigrationFailed", { id }));
+      } else if (result.updated > 0) {
+        ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.ResyncComplete", {
+          updated: result.updated,
+          skipped: result.skipped
+        }));
+      }
+    }
+  }
+
   console.log(`${MODULE_ID} | Ready. FVTT ${game.version}, Crucible ${game.system?.version}`);
 
   // MONKEY-PATCH: TooltipManager has no deactivation hook as of v14.367.
