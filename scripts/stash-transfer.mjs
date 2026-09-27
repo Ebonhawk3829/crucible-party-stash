@@ -32,9 +32,12 @@ const _handledStashDrops = new Set();
  * @param {number} max
  * @param {string} title - dialog window title
  * @param {number} [initial=1]
+ * @param {string} [okLabel] - confirm button label; defaults to a generic Confirm.
+ *   This dialog is shared by the stash, take, and edit-quantity flows, so the
+ *   button text must reflect the caller's action rather than a hardcoded one.
  * @returns {Promise<number|null>}
  */
-async function _promptQuantity(label, max, title, initial = 1) {
+async function _promptQuantity(label, max, title, initial = 1, okLabel) {
   if (max <= 1) return 1;
 
   // Unique ID per dialog instance to find the input regardless of DOM structure
@@ -53,7 +56,7 @@ async function _promptQuantity(label, max, title, initial = 1) {
       window: { title, icon: "fa-solid fa-cubes" },
       content: contentHTML,
       ok: {
-        label: game.i18n.localize("CRUCIBLE_PARTY_STASH.Give"),
+        label: okLabel ?? game.i18n.localize("CRUCIBLE_PARTY_STASH.Confirm"),
         icon: "fa-solid fa-check",
         callback: (event, button) => {
           const input = document.getElementById(qtyId);
@@ -73,7 +76,7 @@ async function _promptQuantity(label, max, title, initial = 1) {
 
 /* ─── Recipient picker dialog ─── */
 
-async function _pickRecipient(choices, title) {
+async function _pickRecipient(choices, title, okLabel) {
   _log("_pickRecipient: opening", { title, choices });
   const recipId = `stash-recip-${foundry.utils.randomID()}`;
   const contentHTML = `<div class="stash-dialog-content">
@@ -95,7 +98,7 @@ async function _pickRecipient(choices, title) {
       },
       content: contentHTML,
       ok: {
-        label: game.i18n.localize("CRUCIBLE_PARTY_STASH.Give"),
+        label: okLabel ?? game.i18n.localize("CRUCIBLE_PARTY_STASH.Give"),
         icon: "fa-solid fa-check",
         callback: (event, button) => {
           const select = document.getElementById(recipId);
@@ -182,7 +185,7 @@ async function _transferFromStash(groupActor, stashId, targetActor, quantity) {
  * happen outside the lock.
  */
 
-async function _initiateTransferToActor(groupActor, stashId, targetActor) {
+async function _initiateTransferToActor(groupActor, stashId, targetActor, { mode = "give" } = {}) {
   // Read outside lock for dialog — entry snapshot may be stale, validated inside lock
   const stash = _readStash(groupActor);
   const entry = stash.find(e => e._stashId === stashId);
@@ -190,9 +193,16 @@ async function _initiateTransferToActor(groupActor, stashId, targetActor) {
     stashId,
     found: !!entry,
     target: targetActor?.name,
-    targetOwner: targetActor?.testUserPermission(game.user, "OWNER")
+    targetOwner: targetActor?.testUserPermission(game.user, "OWNER"),
+    mode
   });
   if (!entry) return null;
+
+  // "give" = GM handing out; "take" = player helping themselves. Same transfer
+  // underneath, but the language should reflect who is acting.
+  const isTake = mode === "take";
+  const qtyTitleKey = isTake ? "TakeQuantity" : "GiveItem";
+  const okLabelKey = isTake ? "Take" : "Give";
 
   const entryQty = entry.system?.quantity ?? 1;
   const stackable = _isStackable(entry);
@@ -201,8 +211,9 @@ async function _initiateTransferToActor(groupActor, stashId, targetActor) {
     chosenQty = await _promptQuantity(
       game.i18n.localize("CRUCIBLE_PARTY_STASH.TakeQuantity"),
       entryQty,
-      game.i18n.localize("CRUCIBLE_PARTY_STASH.GiveItem"),
-      entryQty
+      game.i18n.localize(`CRUCIBLE_PARTY_STASH.${qtyTitleKey}`),
+      entryQty,
+      game.i18n.localize(`CRUCIBLE_PARTY_STASH.${okLabelKey}`)
     );
     if (!chosenQty) return null;
   }

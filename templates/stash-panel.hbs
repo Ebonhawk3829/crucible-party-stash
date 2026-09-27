@@ -75,6 +75,7 @@
           </div>
           {{#if ../../isEditable}}
           <div class="controls">
+            {{#if ../../isGM}}
             {{#if this.isStackable}}
             <a class="control" data-stash-action="editQty" data-stash-id="{{this._stashId}}"
                data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.EditQuantityTitle"}}"
@@ -86,11 +87,15 @@
                   every row so the title zone never changes width. --}}
             <span class="control placeholder" aria-hidden="true"></span>
             {{/if}}
+            {{else}}
+            {{!-- Inert placeholder: quantity editing is GM-only. --}}
+            <span class="control placeholder" aria-hidden="true"></span>
+            {{/if}}
             {{#if ../../canGive}}
             <a class="control" data-stash-action="give" data-stash-id="{{this._stashId}}"
-               data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.GiveToCharacter"}}"
-               aria-label="{{localize "CRUCIBLE_PARTY_STASH.GiveToCharacter"}}">
-              <i class="fa-solid fa-hand-holding"></i>
+               data-tooltip="{{../../giveActionLabel}}"
+               aria-label="{{../../giveActionLabel}}">
+              <i class="{{../../giveActionIcon}}"></i>
             </a>
             {{else}}
             {{!-- Inert placeholder: no party member is writable by this user. --}}

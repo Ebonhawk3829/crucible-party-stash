@@ -152,6 +152,11 @@ async function _renderStashHTML(items, isEditable, groupActor) {
         currencyList,
         isGM: game.user.isGM,
         canGive: _canGiveToAnyone(groupActor),
+        // Role-aware button framing: GM hands out ("give"), player takes ("take")
+        giveActionLabel: game.user.isGM
+          ? game.i18n.localize("CRUCIBLE_PARTY_STASH.GiveToCharacter")
+          : game.i18n.localize("CRUCIBLE_PARTY_STASH.TakeFromStash"),
+        giveActionIcon: game.user.isGM ? "fa-solid fa-hand-holding" : "fa-solid fa-hand-holding-dollar",
         formatCurrency: _formatCurrency
       }
     );
@@ -214,7 +219,8 @@ function _activateStashDropListeners(stashTab, groupActor) {
           game.i18n.localize("CRUCIBLE_PARTY_STASH.StashQuantity"),
           srcItemQty,
           game.i18n.localize("CRUCIBLE_PARTY_STASH.MoveToStash"),
-          1
+          1,
+          game.i18n.localize("CRUCIBLE_PARTY_STASH.Move")
         );
         if (!chosenQty) return;
       } else if (game.settings.get(MODULE_ID, "confirmTransfer")) {
@@ -317,7 +323,8 @@ async function _editStashQuantity(groupActor, stashId) {
     game.i18n.localize("CRUCIBLE_PARTY_STASH.EditQuantityLabel"),
     Number.MAX_SAFE_INTEGER,
     game.i18n.localize("CRUCIBLE_PARTY_STASH.EditQuantityTitle"),
-    currentQty
+    currentQty,
+    game.i18n.localize("CRUCIBLE_PARTY_STASH.Confirm")
   );
   if (newQty === null || newQty === currentQty) return;
 
@@ -393,6 +400,9 @@ function _activateStashActionListeners(stashTab, groupActor) {
     }
 
     if (action === "editQty") {
+      // The button is hidden from non-GMs; this guard keeps a crafted click
+      // (devtools, macro) from invoking the dialog anyway.
+      if (!game.user.isGM) return;
       await _editStashQuantity(groupActor, stashId);
       return;
     }
@@ -438,22 +448,34 @@ function _activateStashActionListeners(stashTab, groupActor) {
         return;
       }
 
+      // Role-based framing: a GM is handing out loot ("give"), a player is
+      // helping themselves ("take"). Same transfer underneath.
+      const isGM = game.user.isGM;
+      const mode = isGM ? "give" : "take";
+      const pickerTitleKey = isGM ? "GiveItem" : "TakeItem";
+      const doneKey = isGM ? "ItemGiven" : "ItemTaken";
+      const failedKey = isGM ? "GiveFailed" : "TakeFailed";
+
       const choices = {};
       for (const actor of writable) choices[actor.id] = actor.name;
-      const recipient = await _pickRecipient(choices);
+      const recipient = await _pickRecipient(
+        choices,
+        game.i18n.localize(`CRUCIBLE_PARTY_STASH.${pickerTitleKey}`),
+        game.i18n.localize(`CRUCIBLE_PARTY_STASH.${isGM ? "Give" : "Take"}`)
+      );
       if (!recipient) return;
 
       const target = game.actors.get(recipient);
       if (!target) { ui.notifications.error(game.i18n.localize("CRUCIBLE_PARTY_STASH.RecipientNotFound")); return; }
 
       try {
-        const name = await _initiateTransferToActor(groupActor, stashId, target);
-        if (name) ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.ItemGiven", { name, target: target.name }));
+        const name = await _initiateTransferToActor(groupActor, stashId, target, { mode });
+        if (name) ui.notifications.info(game.i18n.format(`CRUCIBLE_PARTY_STASH.${doneKey}`, { name, target: target.name }));
       } catch (err) {
         // _withStashLock logs and rethrows; without this the rejection is
         // unhandled and the click appears to do nothing at all.
-        console.error(`${MODULE_ID} | Give to ${target.name} failed`, err);
-        ui.notifications.error(game.i18n.format("CRUCIBLE_PARTY_STASH.GiveFailed", { target: target.name }));
+        console.error(`${MODULE_ID} | ${isGM ? "Give" : "Take"} to ${target.name} failed`, err);
+        ui.notifications.error(game.i18n.format(`CRUCIBLE_PARTY_STASH.${failedKey}`, { target: target.name }));
       }
     }
   });
