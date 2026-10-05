@@ -324,7 +324,8 @@ export function _resolveGroupMembers(groupActor) {
  * @type {ReadonlyArray<{id: string, fn: Function}>}
  */
 export const STASH_MIGRATIONS = Object.freeze([
-  { id: "resync-compendium-0.11.0", requires: "0.11.0", fn: _resyncStashFromCompendium }
+  { id: "resync-compendium-0.11.0", requires: "0.11.0", fn: _resyncStashFromCompendium },
+  { id: "resync-compendium-0.11.1", requires: "0.11.1", fn: _resyncStashFromCompendium }
 ]);
 
 /**
@@ -494,23 +495,28 @@ async function _resolveUpstream(entry, cache) {
   }
 
   // Fall back to an identifier search across configured equipment packs.
+  // Mirrors Crucible's `_indexEquipment`: when several upstream items share an
+  // identifier, prefer the standard-quality variant.
   const identifier = entry.system?.identifier;
   if (!identifier) return null;
   const cacheKey = `id:${entry.type}:${identifier}`;
   if (cache.has(cacheKey)) return cache.get(cacheKey);
 
   let found = null;
+  let foundIsStandard = false;
   for (const packId of crucible.CONFIG.packs.equipment ?? []) {
     const pack = game.packs.get(packId);
     if (!pack) continue;
     if (!pack.indexed) await pack.getIndex();
     for (const idx of pack.index.values()) {
-      if (idx.type === entry.type && idx.system?.identifier === identifier) {
-        found = await pack.getDocument(idx._id).catch(() => null);
-        break;
-      }
+      if (idx.type !== entry.type || idx.system?.identifier !== identifier) continue;
+      const isStandard = idx.system?.quality === "standard";
+      if (found && !isStandard) continue; // Already have a candidate; only upgrade to standard
+      found = await pack.getDocument(idx._id).catch(() => null);
+      foundIsStandard = isStandard;
+      if (foundIsStandard) break;
     }
-    if (found) break;
+    if (foundIsStandard) break;
   }
   cache.set(cacheKey, found);
   return found;
