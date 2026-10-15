@@ -11,7 +11,7 @@ import {
   _readStash, _getStash, _setStash, _checkStashCapacity,
   _isStackable, _stashEntryMatches, _withStashLock,
   _getCurrency, _formatCurrency, _isShapedCurrency, _resolveGroupMembers, _log,
-  _itemValueInfo
+  _itemValueInfo, _baseItemName
 } from "./stash-data.mjs";
 import {
   _promptQuantity, _pickRecipient, _initiateTransferToActor,
@@ -93,12 +93,33 @@ function _groupStashItems(items) {
   const known = [];
   const rest = [];
   for (const group of buckets.values()) {
+    group.items.sort(_compareStashItems);
     (TYPE_GROUP_ORDER.includes(group.key) ? known : rest).push(group);
   }
   known.sort((a, b) => TYPE_GROUP_ORDER.indexOf(a.key) - TYPE_GROUP_ORDER.indexOf(b.key));
   rest.sort((a, b) => a.label.localeCompare(b.label));
-  if (other) rest.push(other);
+  if (other) {
+    other.items.sort(_compareStashItems);
+    rest.push(other);
+  }
   return [...known, ...rest];
+}
+
+/**
+ * Order items within a type group: base name A→Z, then unit value high→low.
+ *
+ * Sorting by base name (stripping Crucible's "(2) " stack prefix) keeps
+ * identical items adjacent so their values can be compared at a glance;
+ * ordering those by value puts the best of a cluster first. Array#sort is
+ * stable, so fully-equal entries keep their stash insertion order.
+ * @param {object} a  localized stash entry
+ * @param {object} b  localized stash entry
+ * @returns {number}
+ */
+function _compareStashItems(a, b) {
+  const byName = _baseItemName(a.name).localeCompare(_baseItemName(b.name));
+  if (byName !== 0) return byName;
+  return (b.value?.unit ?? 0) - (a.value?.unit ?? 0);
 }
 
 /**
