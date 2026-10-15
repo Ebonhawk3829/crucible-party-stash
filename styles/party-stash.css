@@ -172,12 +172,38 @@
   min-width: 0;
 }
 
+/* Icon frame anchors the quantity badge to the icon's corner. */
+.crucible.actor-group .stash-list .stash-item .icon-frame {
+  position: relative;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+}
+
 .crucible.actor-group .stash-list .stash-item .icon {
   flex: 0 0 32px;
   width: 32px;
   height: 32px;
   border-radius: 4px;
   object-fit: cover;
+}
+
+/* Stack count, bottom-right of the icon. Only rendered when qty > 1. */
+.crucible.actor-group .stash-list .stash-item .qty-badge {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  min-width: 16px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: var(--color-warm-1, #d4af37);
+  color: #1a1a1a;
+  font-size: var(--font-size-10, 0.625rem);
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
 }
 
 .crucible.actor-group .stash-list .stash-item .title {
@@ -208,13 +234,19 @@
   letter-spacing: 0.5px;
 }
 
-/* Value tag: "5 × 1gp · Total value 5gp". Kept lowercase (currency
-   abbreviations read better than uppercased) and tinted gold. */
+/* Value tag: "5gp (5 × 1gp)". Kept lowercase (currency abbreviations read
+   better than uppercased) and tinted gold. The parenthetical unit breakdown
+   is spaced away from the total and muted so the total reads first. */
 .crucible.actor-group .stash-list .stash-item .tag.stash-value-tag {
   text-transform: none;
   letter-spacing: 0;
   color: var(--color-warm-1, #d4af37);
   background: rgba(212, 175, 55, 0.12);
+}
+
+.crucible.actor-group .stash-list .stash-item .tag.stash-value-tag .unit {
+  margin-left: 0.6rem;
+  opacity: 0.7;
 }
 
 .crucible.actor-group .stash-list .stash-item .controls {

@@ -39,7 +39,6 @@
   "CRUCIBLE_PARTY_STASH.NoMembers": "No party members available. Add characters to the group first.",
   "CRUCIBLE_PARTY_STASH.Recipient": "Recipient",
   "CRUCIBLE_PARTY_STASH.Quantity": "Qty",
-  "CRUCIBLE_PARTY_STASH.TotalValue": "Total value",
   "CRUCIBLE_PARTY_STASH.UnitValue": "Each: {value}",
   "CRUCIBLE_PARTY_STASH.TotalValueLine": "Total: {value}",
   "CRUCIBLE_PARTY_STASH.GroupOther": "Other",

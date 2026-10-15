@@ -311,15 +311,17 @@ export function _scaledPrice(itemData) {
  * Resolve the value of a stash entry (or any item-data object) into display
  * strings, using the rarity-scaled price.
  *
- * The returned `label` is the compact form used on the stash row:
+ * The returned `label` is the plain-text form of the row tag:
  *   qty 1  -> "1gp"
- *   qty 5  -> "5 × 1gp · Total value 5gp"
+ *   qty 5  -> "5gp (5 × 1gp)"
  * Empty when the price cannot be resolved (non-physical types, price 0).
+ * The template composes the same content from the parts so the parenthetical
+ * breakdown can be spaced separately; `label` is the flat equivalent.
  *
  * @param {object} itemData       a stash entry or item.toObject()
  * @param {number} [scaledPrice]  a pre-resolved scaled price, to avoid
  *                                reconstructing an Item the caller already has
- * @returns {{unit: number, qty: number, total: number, unitLabel: string, totalLabel: string, label: string}}
+ * @returns {{unit: number, qty: number, total: number, showQty: boolean, unitLabel: string, totalLabel: string, label: string}}
  */
 export function _itemValueInfo(itemData, scaledPrice) {
   const resolved = Number.isFinite(scaledPrice) ? scaledPrice : _scaledPrice(itemData);
@@ -328,13 +330,12 @@ export function _itemValueInfo(itemData, scaledPrice) {
   const total = unit * qty;
   const unitLabel = _formatCurrency(unit);
   const totalLabel = _formatCurrency(total);
+  const showQty = qty > 1;
   let label = "";
   if (unit > 0) {
-    label = qty > 1
-      ? `${qty} × ${unitLabel} · ${game.i18n.localize("CRUCIBLE_PARTY_STASH.TotalValue")} ${totalLabel}`
-      : unitLabel;
+    label = showQty ? `${totalLabel} (${qty} × ${unitLabel})` : unitLabel;
   }
-  return { unit, qty, total, unitLabel, totalLabel, label };
+  return { unit, qty, total, showQty, unitLabel, totalLabel, label };
 }
 
 /**
