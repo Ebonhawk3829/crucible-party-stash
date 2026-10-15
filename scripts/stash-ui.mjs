@@ -10,7 +10,8 @@ import {
   MODULE_ID,
   _readStash, _getStash, _setStash, _checkStashCapacity,
   _isStackable, _stashEntryMatches, _withStashLock,
-  _getCurrency, _formatCurrency, _isShapedCurrency, _resolveGroupMembers, _log
+  _getCurrency, _formatCurrency, _isShapedCurrency, _resolveGroupMembers, _log,
+  _itemValueInfo
 } from "./stash-data.mjs";
 import {
   _promptQuantity, _pickRecipient, _initiateTransferToActor,
@@ -127,7 +128,8 @@ async function _renderStashHTML(items, isEditable, groupActor) {
     typeLabel: CONFIG.Item.typeLabels?.[item.type]
       ? game.i18n.localize(CONFIG.Item.typeLabels[item.type])
       : item.type,
-    isStackable: _isStackable(item)
+    isStackable: _isStackable(item),
+    value: _itemValueInfo(item)
   }));
   const groups = _groupStashItems(localized);
   _log("_renderStashHTML", {

@@ -241,6 +241,102 @@ export async function _subtractCurrency(groupActor, amounts) {
   });
 }
 
+/* ─── Scaled-price memo ───
+ * Deriving a scaled price means constructing a throwaway Item, which the row
+ * renderer does once per entry per sheet render. The result is a pure function
+ * of the fields that feed Crucible's rarity computation, so we memoise on a
+ * signature of exactly those fields. Bounded and insertion-ordered like the
+ * tooltip cache.
+ */
+const _priceCache = new Map();
+const _PRICE_CACHE_MAX = 200;
+
+/** Signature of the fields which determine an item's rarity-scaled price. */
+function _priceSignature(itemData) {
+  const s = itemData?.system ?? {};
+  const props = s.properties instanceof Set ? Array.from(s.properties) : (s.properties ?? []);
+  const affixes = (itemData?.effects ?? [])
+    .filter(e => e?.type === "affix")
+    .map(e => [e.system?.identifier, e.system?.tier?.value]);
+  return JSON.stringify([
+    itemData?.type, s.price, s.quality, s.enchantment, s.broken,
+    [...props].sort(), affixes
+  ]);
+}
+
+/**
+ * Resolve the *scaled* price of a stash entry, in base currency units.
+ *
+ * Crucible stores only the base price in an item's source data. The
+ * rarity-scaled price (quality tier, affix tiers, enchantment, broken state)
+ * is computed at runtime in `CruciblePhysicalItem#prepareDerivedData`, so it
+ * is NOT present in the stash snapshot.
+ *
+ * Rather than reimplement that formula here — which would silently drift from
+ * the system and produce wrong values — we construct a throwaway Item from the
+ * snapshot and read the price Crucible derived for us. This is the same
+ * technique the tooltip already uses to render item cards.
+ *
+ * @param {object} itemData  a stash entry or item.toObject()
+ * @returns {number|null}    scaled price in base units, or null if unresolvable
+ */
+export function _scaledPrice(itemData) {
+  if (!Number.isFinite(itemData?.system?.price)) return null;
+
+  const sig = _priceSignature(itemData);
+  if (_priceCache.has(sig)) return _priceCache.get(sig);
+
+  let result = null;
+  try {
+    const data = foundry.utils.deepClone(itemData);
+    delete data._stashId;
+    const temp = new Item.implementation(data);
+    const scaled = temp?.system?.price;
+    if (Number.isFinite(scaled)) result = Math.max(Math.trunc(scaled), 0);
+  } catch (err) {
+    // A wrong value is worse than no value: report nothing rather than the
+    // unscaled base price, which would understate enchanted or quality items.
+    _log("_scaledPrice: item construction failed", { name: itemData?.name, err });
+    result = null;
+  }
+
+  _priceCache.set(sig, result);
+  if (_priceCache.size > _PRICE_CACHE_MAX) {
+    _priceCache.delete(_priceCache.keys().next().value);
+  }
+  return result;
+}
+
+/**
+ * Resolve the value of a stash entry (or any item-data object) into display
+ * strings, using the rarity-scaled price.
+ *
+ * The returned `label` is the compact form used on the stash row:
+ *   qty 1  -> "1gp"
+ *   qty 5  -> "5 × 1gp · Total value 5gp"
+ * Empty when the price cannot be resolved (non-physical types, price 0).
+ *
+ * @param {object} itemData       a stash entry or item.toObject()
+ * @param {number} [scaledPrice]  a pre-resolved scaled price, to avoid
+ *                                reconstructing an Item the caller already has
+ * @returns {{unit: number, qty: number, total: number, unitLabel: string, totalLabel: string, label: string}}
+ */
+export function _itemValueInfo(itemData, scaledPrice) {
+  const resolved = Number.isFinite(scaledPrice) ? scaledPrice : _scaledPrice(itemData);
+  const unit = Number.isFinite(resolved) ? Math.max(Math.trunc(resolved), 0) : 0;
+  const qty = Math.max(Math.trunc(Number(itemData?.system?.quantity) || 1), 1);
+  const total = unit * qty;
+  const unitLabel = _formatCurrency(unit);
+  const totalLabel = _formatCurrency(total);
+  let label = "";
+  if (unit > 0) {
+    label = qty > 1
+      ? `${qty} × ${unitLabel} · ${game.i18n.localize("CRUCIBLE_PARTY_STASH.TotalValue")} ${totalLabel}`
+      : unitLabel;
+  }
+  return { unit, qty, total, unitLabel, totalLabel, label };
+}
+
 /**
  * Format a shaped pool/amount for display. Shaped mode shows each
  * denomination as stored (omitting zeros); shapeless mode shows the greedy

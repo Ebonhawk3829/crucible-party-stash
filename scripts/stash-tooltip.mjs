@@ -12,9 +12,38 @@
  * without reaching into our internals.
  * ──────────────────────────────────────────────────────────────── */
 
-import { MODULE_ID, _readStash } from "./stash-data.mjs";
+import { MODULE_ID, _readStash, _itemValueInfo } from "./stash-data.mjs";
 
 const _TOOLTIP_CACHE_MAX = 50;
+
+/**
+ * Build a value footer for the tooltip: the per-item price and, for stacks,
+ * the total. Returns null when the item has no price.
+ * @param {object} entry          a stash entry
+ * @param {number} [scaledPrice]  a pre-resolved scaled price, when the caller
+ *                                already holds a constructed Item
+ * @returns {HTMLElement|null}
+ */
+function _buildValueFooter(entry, scaledPrice) {
+  const info = _itemValueInfo(entry, scaledPrice);
+  if (!info.unit) return null;
+
+  const footer = document.createElement("div");
+  footer.className = "stash-tooltip-value";
+
+  const each = document.createElement("span");
+  each.className = "each";
+  each.textContent = game.i18n.format("CRUCIBLE_PARTY_STASH.UnitValue", { value: info.unitLabel });
+  footer.appendChild(each);
+
+  if (info.qty > 1) {
+    const total = document.createElement("span");
+    total.className = "total";
+    total.textContent = game.i18n.format("CRUCIBLE_PARTY_STASH.TotalValueLine", { value: info.totalLabel });
+    footer.appendChild(total);
+  }
+  return footer;
+}
 
 export const stashTooltip = {
   _activeId: null,
@@ -86,16 +115,13 @@ export const stashTooltip = {
     const entry = _readStash(groupActor).find(e => e._stashId === stashId);
     if (!entry) return;
 
-    const itemName = entry.name;
-    const itemImg = entry.img;
-
     // undefined = miss, null = known fallback, Node = cached card.
     const cached = this._cache.get(stashId);
     if (cached !== undefined) {
       if (this._activeId !== stashId) return;
       if (!li.matches(":hover")) return;
       if (cached === null) {
-        this._activateFallback(li, itemName, itemImg);
+        this._activateFallback(li, entry);
       } else {
         game.tooltip.activate(li, {
           html: cached.cloneNode(true),
@@ -117,7 +143,7 @@ export const stashTooltip = {
       if (this._activeId !== stashId) return;
       if (!li.matches(":hover")) return;
       this._cache.set(stashId, null);
-      this._activateFallback(li, itemName, itemImg);
+      this._activateFallback(li, entry);
       return;
     }
 
@@ -134,12 +160,15 @@ export const stashTooltip = {
 
     if (!html) {
       this._cache.set(stashId, null);
-      this._activateFallback(li, itemName, itemImg);
+      this._activateFallback(li, entry);
       return;
     }
 
     const wrapper = document.createElement("div");
     wrapper.innerHTML = html;
+
+    const valueFooter = _buildValueFooter(entry, tempItem.system?.price);
+    if (valueFooter) wrapper.appendChild(valueFooter);
 
     // Cache invalidated on re-render via clearCache().
     this._cache.set(stashId, wrapper);
@@ -162,13 +191,13 @@ export const stashTooltip = {
     this._cache.clear();
   },
 
-  _activateFallback(li, name, img) {
+  _activateFallback(li, entry) {
     const wrapper = document.createElement("div");
     wrapper.className = "stash-tooltip-fallback";
 
-    if (img) {
+    if (entry.img) {
       const imgEl = document.createElement("img");
-      imgEl.src = img;
+      imgEl.src = entry.img;
       imgEl.width = 36;
       imgEl.height = 36;
       imgEl.alt = "";
@@ -176,8 +205,11 @@ export const stashTooltip = {
     }
 
     const strong = document.createElement("strong");
-    strong.textContent = name ?? "Unknown";
+    strong.textContent = entry.name ?? "Unknown";
     wrapper.appendChild(strong);
+
+    const valueFooter = _buildValueFooter(entry);
+    if (valueFooter) wrapper.appendChild(valueFooter);
 
     game.tooltip.activate(li, {
       html: wrapper,

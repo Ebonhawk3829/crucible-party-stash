@@ -208,6 +208,15 @@
   letter-spacing: 0.5px;
 }
 
+/* Value tag: "5 × 1gp · Total value 5gp". Kept lowercase (currency
+   abbreviations read better than uppercased) and tinted gold. */
+.crucible.actor-group .stash-list .stash-item .tag.stash-value-tag {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--color-warm-1, #d4af37);
+  background: rgba(212, 175, 55, 0.12);
+}
+
 .crucible.actor-group .stash-list .stash-item .controls {
   display: flex;
   justify-content: flex-end;
@@ -497,5 +506,24 @@
 
 .crucible.crucible-tooltip .stash-tooltip-fallback strong {
   font-size: var(--font-size-14, 0.875rem);
+  font-weight: 600;
+}
+
+/* ─── Stash Tooltip Value Footer ───
+ * Appended below Crucible's own item card (or the fallback) to surface the
+ * per-item price and stack total, which the system card does not show. */
+
+.crucible.crucible-tooltip .stash-tooltip-value {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--color-border-light-1, #333);
+  font-size: var(--font-size-12, 0.75rem);
+  color: var(--color-warm-1, #d4af37);
+}
+
+.crucible.crucible-tooltip .stash-tooltip-value .total {
   font-weight: 600;
 }

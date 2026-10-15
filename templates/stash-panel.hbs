@@ -68,8 +68,12 @@
             <img class="icon" src="{{this.img}}" alt="{{this.name}}" width="32" height="32">
             <div class="title">
               <h4>{{this.name}}</h4>
-              {{#if this.system.quantity}}
-                <span class="tag">{{localize "CRUCIBLE_PARTY_STASH.Quantity"}}: {{this.system.quantity}}</span>
+              {{#if this.value.label}}
+                <span class="tag stash-value-tag">{{this.value.label}}</span>
+              {{else}}
+                {{#if this.system.quantity}}
+                  <span class="tag">{{localize "CRUCIBLE_PARTY_STASH.Quantity"}}: {{this.system.quantity}}</span>
+                {{/if}}
               {{/if}}
             </div>
           </div>
