@@ -65,12 +65,8 @@
         {{#each this.items}}
         <li class="stash-item line-item" data-stash-id="{{this._stashId}}" draggable="true">
           <div class="stash-tooltip-zone">
-            <div class="icon-frame">
-              <img class="icon" src="{{this.img}}" alt="{{this.name}}" width="32" height="32">
-              {{#if this.value.showQty}}
-                <span class="qty-badge" aria-label="{{localize "CRUCIBLE_PARTY_STASH.Quantity"}}: {{this.value.qty}}">×{{this.value.qty}}</span>
-              {{/if}}
-            </div>
+            <img class="icon" src="{{this.img}}" alt="{{this.name}}" width="32" height="32">
+            <span class="qty" aria-label="{{localize "CRUCIBLE_PARTY_STASH.Quantity"}}: {{this.value.qty}}">{{#if this.value.showQty}}×{{this.value.qty}}{{/if}}</span>
             <div class="title">
               <h4>{{this.name}}</h4>
               {{#if this.value.unit}}
