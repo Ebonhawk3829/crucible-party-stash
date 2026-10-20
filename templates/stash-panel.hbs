@@ -1,122 +1,126 @@
-<div class="stash-currency-section">
-  <div class="stash-currency-pool">
-    {{#if shapedCurrency}}
-      {{#each currencyList}}
-        <span class="stash-denom-chip" data-tooltip="{{localize this.label}}">
-          {{#if this.icon}}<img class="denom-icon" src="{{this.icon}}" alt="{{localize this.abbreviation}}">{{/if}}
-          <span class="denom-count">{{lookup ../pool this.key}}</span>
-        </span>
-      {{/each}}
-    {{else}}
-      <i class="fa-solid fa-coins"></i>
-      <span class="stash-currency-amount">{{formatCurrency pool}}</span>
-    {{/if}}
-  </div>
-  {{#if isEditable}}
-  <div class="controls">
-    <a class="control" data-stash-action="currencyDeposit"
-       data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.DepositCurrencyTitle"}}"
-       aria-label="{{localize "CRUCIBLE_PARTY_STASH.DepositCurrencyTitle"}}">
-      <i class="fa-solid fa-arrow-up-from-bracket"></i>
-    </a>
-    <a class="control" data-stash-action="currencyTake"
-       data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.TakeCurrencyTitle"}}"
-       aria-label="{{localize "CRUCIBLE_PARTY_STASH.TakeCurrencyTitle"}}">
-      <i class="fa-solid fa-hand-holding-dollar"></i>
-    </a>
-    {{#if isGM}}
-    <a class="control" data-stash-action="currencyCreate"
-       data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.CreateCurrencyTitle"}}"
-       aria-label="{{localize "CRUCIBLE_PARTY_STASH.CreateCurrencyTitle"}}">
-      <i class="fa-solid fa-plus"></i>
-    </a>
-    {{#if shapedCurrency}}
-    <a class="control" data-stash-action="currencyExchange"
-       data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.ExchangeTitle"}}"
-       aria-label="{{localize "CRUCIBLE_PARTY_STASH.ExchangeTitle"}}">
-      <i class="fa-solid fa-right-left"></i>
-    </a>
-    {{/if}}
-    <a class="control" data-stash-action="currencySplit"
-       data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.SplitCurrencyTitle"}}"
-       aria-label="{{localize "CRUCIBLE_PARTY_STASH.SplitCurrencyTitle"}}">
-      <i class="fa-solid fa-coins"></i>
-    </a>
-    {{/if}}
-  </div>
-  {{/if}}
-</div>
-{{#if isEmpty}}
-<div class="stash-empty">
-  <p><i class="fa-solid fa-box-open"></i> {{localize "CRUCIBLE_PARTY_STASH.StashEmpty"}}</p>
-  <p class="hint">{{localize "CRUCIBLE_PARTY_STASH.DragHint"}}</p>
-</div>
-{{else}}
-<div class="stash-container">
-  <p class="hint">{{localize "CRUCIBLE_PARTY_STASH.DragHintStash"}}</p>
-  <div class="stash-groups">
-    {{#each groups}}
-    <section class="stash-group" data-stash-type="{{this.key}}">
-      <header class="stash-group-header">
-        <h3>{{this.label}}</h3>
-        <span class="stash-group-count">{{this.items.length}}</span>
-      </header>
-      <ol class="items-list stash-list scrollable {{#unless ../isEditable}}no-controls{{/unless}}">
-        {{#each this.items}}
-        <li class="stash-item line-item" data-stash-id="{{this._stashId}}" draggable="true">
-          <div class="stash-tooltip-zone">
-            <img class="icon" src="{{this.img}}" alt="{{this.name}}" width="32" height="32">
-            <span class="qty" aria-label="{{localize "CRUCIBLE_PARTY_STASH.Quantity"}}: {{this.value.qty}}">{{#if this.value.showQty}}×{{this.value.qty}}{{/if}}</span>
-            <div class="title">
-              <h4>{{this.name}}</h4>
-              {{#if this.value.unit}}
-                <span class="tag stash-value-tag">
-                  {{this.value.totalLabel}}
-                  {{#if this.value.showQty}}<span class="unit">({{this.value.qty}} × {{this.value.unitLabel}})</span>{{/if}}
-                </span>
-              {{/if}}
-            </div>
-          </div>
-          {{#if ../../isEditable}}
-          <div class="controls">
-            {{#if ../../isGM}}
-            {{#if this.isStackable}}
-            <a class="control" data-stash-action="editQty" data-stash-id="{{this._stashId}}"
-               data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.EditQuantityTitle"}}"
-               aria-label="{{localize "CRUCIBLE_PARTY_STASH.EditQuantityTitle"}}">
-              <i class="fa-solid fa-pen"></i>
-            </a>
-            {{else}}
-            {{!-- Inert placeholder: keeps the controls column 3 slots wide on
-                  every row so the title zone never changes width. --}}
-            <span class="control placeholder" aria-hidden="true"></span>
-            {{/if}}
-            {{else}}
-            {{!-- Inert placeholder: quantity editing is GM-only. --}}
-            <span class="control placeholder" aria-hidden="true"></span>
-            {{/if}}
-            {{#if ../../canGive}}
-            <a class="control" data-stash-action="give" data-stash-id="{{this._stashId}}"
-               data-tooltip="{{../../giveActionLabel}}"
-               aria-label="{{../../giveActionLabel}}">
-              <i class="{{../../giveActionIcon}}"></i>
-            </a>
-            {{else}}
-            {{!-- Inert placeholder: no party member is writable by this user. --}}
-            <span class="control placeholder" aria-hidden="true"></span>
-            {{/if}}
-            <a class="control" data-stash-action="remove" data-stash-id="{{this._stashId}}"
-               data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.RemoveFromStash"}}"
-               aria-label="{{localize "CRUCIBLE_PARTY_STASH.RemoveFromStash"}}">
-              <i class="fa-solid fa-trash"></i>
-            </a>
-          </div>
-          {{/if}}
-        </li>
+<section class="tab sheet-section stash flexcol {{tabs.stash.cssClass}}" data-tab="stash" data-group="sheet">
+  <div class="stash-currency-section">
+    <div class="stash-currency-pool">
+      {{#if shapedCurrency}}
+        {{#each currencyList}}
+          <span class="stash-denom-chip" data-tooltip="{{localize this.label}}">
+            {{#if this.icon}}<img class="denom-icon" src="{{this.icon}}" alt="{{localize this.abbreviation}}">{{/if}}
+            <span class="denom-count">{{lookup ../pool this.key}}</span>
+          </span>
         {{/each}}
-      </ol>
-    </section>
-    {{/each}}
+      {{else}}
+        <i class="fa-solid fa-coins"></i>
+        <span class="stash-currency-amount">{{formatCurrency pool}}</span>
+      {{/if}}
+    </div>
+    {{#if isEditable}}
+    <div class="controls">
+      <button type="button" class="control" data-stash-action="currencyDeposit"
+         data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.DepositCurrencyTitle"}}"
+         aria-label="{{localize "CRUCIBLE_PARTY_STASH.DepositCurrencyTitle"}}">
+        <i class="fa-solid fa-arrow-up-from-bracket"></i>
+      </button>
+      <button type="button" class="control" data-stash-action="currencyTake"
+         data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.TakeCurrencyTitle"}}"
+         aria-label="{{localize "CRUCIBLE_PARTY_STASH.TakeCurrencyTitle"}}">
+        <i class="fa-solid fa-hand-holding-dollar"></i>
+      </button>
+      {{#if isGM}}
+      <button type="button" class="control" data-stash-action="currencyCreate"
+         data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.CreateCurrencyTitle"}}"
+         aria-label="{{localize "CRUCIBLE_PARTY_STASH.CreateCurrencyTitle"}}">
+        <i class="fa-solid fa-plus"></i>
+      </button>
+      {{#if shapedCurrency}}
+      <button type="button" class="control" data-stash-action="currencyExchange"
+         data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.ExchangeTitle"}}"
+         aria-label="{{localize "CRUCIBLE_PARTY_STASH.ExchangeTitle"}}">
+        <i class="fa-solid fa-right-left"></i>
+      </button>
+      {{/if}}
+      <button type="button" class="control" data-stash-action="currencySplit"
+         data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.SplitCurrencyTitle"}}"
+         aria-label="{{localize "CRUCIBLE_PARTY_STASH.SplitCurrencyTitle"}}">
+        <i class="fa-solid fa-coins"></i>
+      </button>
+      {{/if}}
+    </div>
+    {{/if}}
   </div>
-</div>
-{{/if}}
+  <div class="stash-scroll scrollable">
+    {{#if isEmpty}}
+    <div class="stash-empty">
+      <p><i class="fa-solid fa-box-open"></i> {{localize "CRUCIBLE_PARTY_STASH.StashEmpty"}}</p>
+      <p class="hint">{{localize "CRUCIBLE_PARTY_STASH.DragHint"}}</p>
+    </div>
+    {{else}}
+    <div class="stash-container">
+      <p class="hint">{{localize "CRUCIBLE_PARTY_STASH.DragHintStash"}}</p>
+      <div class="stash-groups">
+        {{#each groups}}
+        <section class="stash-group" data-stash-type="{{this.key}}">
+          <header class="stash-group-header">
+            <h3>{{this.label}}</h3>
+            <span class="stash-group-count">{{this.items.length}}</span>
+          </header>
+          <ol class="items-list stash-list scrollable {{#unless ../isEditable}}no-controls{{/unless}}">
+            {{#each this.items}}
+            <li class="stash-item line-item" data-stash-id="{{this._stashId}}" draggable="true">
+              <div class="stash-tooltip-zone">
+                <img class="icon" src="{{this.img}}" alt="{{this.name}}" width="32" height="32">
+                <span class="qty" aria-label="{{localize "CRUCIBLE_PARTY_STASH.Quantity"}}: {{this.value.qty}}">{{#if this.value.showQty}}×{{this.value.qty}}{{/if}}</span>
+                <div class="title">
+                  <h4>{{this.name}}</h4>
+                  {{#if this.value.unit}}
+                    <span class="tag stash-value-tag">
+                      {{this.value.totalLabel}}
+                      {{#if this.value.showQty}}<span class="unit">({{this.value.qty}} × {{this.value.unitLabel}})</span>{{/if}}
+                    </span>
+                  {{/if}}
+                </div>
+              </div>
+              {{#if ../../isEditable}}
+              <div class="controls">
+                {{#if ../../isGM}}
+                {{#if this.isStackable}}
+                <button type="button" class="control" data-stash-action="editQty" data-stash-id="{{this._stashId}}"
+                   data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.EditQuantityTitle"}}"
+                   aria-label="{{localize "CRUCIBLE_PARTY_STASH.EditQuantityTitle"}}">
+                  <i class="fa-solid fa-pen"></i>
+                </button>
+                {{else}}
+                {{!-- Inert placeholder: keeps the controls column 3 slots wide on
+                      every row so the title zone never changes width. --}}
+                <span class="control placeholder" aria-hidden="true"></span>
+                {{/if}}
+                {{else}}
+                {{!-- Inert placeholder: quantity editing is GM-only. --}}
+                <span class="control placeholder" aria-hidden="true"></span>
+                {{/if}}
+                {{#if ../../canGive}}
+                <button type="button" class="control" data-stash-action="give" data-stash-id="{{this._stashId}}"
+                   data-tooltip="{{../../giveActionLabel}}"
+                   aria-label="{{../../giveActionLabel}}">
+                  <i class="{{../../giveActionIcon}}"></i>
+                </button>
+                {{else}}
+                {{!-- Inert placeholder: no party member is writable by this user. --}}
+                <span class="control placeholder" aria-hidden="true"></span>
+                {{/if}}
+                <button type="button" class="control" data-stash-action="remove" data-stash-id="{{this._stashId}}"
+                   data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.RemoveFromStash"}}"
+                   aria-label="{{localize "CRUCIBLE_PARTY_STASH.RemoveFromStash"}}">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+              {{/if}}
+            </li>
+            {{/each}}
+          </ol>
+        </section>
+        {{/each}}
+      </div>
+    </div>
+    {{/if}}
+  </div>
+</section>

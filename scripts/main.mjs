@@ -6,14 +6,14 @@
  *   stash-data.mjs    — flag read/write, locking, capacity, stackability
  *   stash-tooltip.mjs — rich item-card tooltips + fallback renderer
  *   stash-transfer.mjs — stash↔hero transfer workflows + drop intercepts
- *   stash-ui.mjs      — DOM construction, tab injection, event wiring
+ *   stash-ui.mjs      — stash context builder + event wiring
  * ──────────────────────────────────────────────────────────────── */
 
-import { MODULE_ID, _getStash, canUseStash, _log, _runPendingStashMigrations } from "./stash-data.mjs";
+import { MODULE_ID, canUseStash, _log, _runPendingStashMigrations } from "./stash-data.mjs";
 import { stashTooltip, onExternalDeactivate } from "./stash-tooltip.mjs";
 import { _setupHeroDropInterception, onDropActorSheetData } from "./stash-transfer.mjs";
 import {
-  TEMPLATE_STASH, _renderStashHTML, _activateStashDropListeners, _activateStashActionListeners
+  TEMPLATE_STASH, _prepareStashContext, _activateStashDropListeners, _activateStashActionListeners
 } from "./stash-ui.mjs";
 
 Hooks.once("init", async () => {
@@ -70,97 +70,124 @@ Hooks.once("init", async () => {
   await foundry.applications.handlebars.loadTemplates([TEMPLATE_STASH]);
 });
 
-/* ─── Core Injection ───
- *
- * CrucibleGroupActorSheet uses root: true on its single PARTS entry, so Foundry
- * places children directly inside .window-content rather than a .sheet-body wrapper.
- * We target .window-content accordingly.
- *
- * Why full rebuild instead of in-place update:
- * - First render: no .party-stash-tabs exists → full injection needed.
- * - Re-render after Crucible replaces .window-content innerHTML wholesale
- *   (which it does on full re-renders): our structure is gone → full rebuild.
- * - Light re-render where DOM is intact: could theoretically update in-place,
- *   but there's no reliable way to detect "my structure is still intact" without
- *   doing essentially the same amount of work as rebuilding. */
+// Patched after `init` so Crucible has finished exposing its API, and before
+// `ready` so no group sheet has rendered yet.
+Hooks.once("setup", () => _registerGroupSheetStashTab());
 
-Hooks.on("renderCrucibleGroupActorSheet", async (app, element, context, options) => {
-  const actor = app.actor;
-  if (!actor || actor.type !== "group") return;
+/* ─── Native Tab Integration ───
+ *
+ * Crucible 0.11.2 rebuilt CrucibleGroupActorSheet as a set of template parts
+ * with its own tab group (Members / Milestones). Rather than injecting our own
+ * tab bar and moving the sheet's DOM around, we register the Shared Stash as a
+ * first-class part and tab of that sheet:
+ *
+ *   - a `stash` template part renders templates/stash-panel.hbs
+ *   - a `stash` entry in TABS.sheet adds the navigation button
+ *
+ * The system's own tab navigation and ApplicationV2#changeTab then handle
+ * showing and hiding the panel, so the stash tab coexists with Members and
+ * Milestones instead of competing with them. */
 
-  if (!canUseStash()) return;
+function _registerGroupSheetStashTab() {
+  const sheetClass = crucible?.api?.applications?.CrucibleGroupActorSheet;
+  if (!sheetClass) {
+    console.error(`${MODULE_ID} | CrucibleGroupActorSheet not found — the Shared Stash tab is unavailable.`);
+    return;
+  }
+
+  sheetClass.PARTS.stash = {
+    template: TEMPLATE_STASH,
+    scrollable: [".stash-scroll"]
+  };
+  sheetClass.TABS.sheet.tabs.push({ id: "stash", icon: "fa-solid fa-box-open" });
+
+  // Supply the stash context to the part, and hide the tab entirely when the
+  // acting user does not meet the configured minimum role.
+  const prepareContext = sheetClass.prototype._prepareContext;
+  sheetClass.prototype._prepareContext = async function (options) {
+    const context = await prepareContext.call(this, options);
+    if (canUseStash() && this.actor?.type === "group") {
+      Object.assign(context, _prepareStashContext(this.actor, this.isEditable));
+    } else if (context.tabs) {
+      delete context.tabs.stash;
+    }
+    return context;
+  };
+
+  // Drop the part (not just the nav entry) when the user cannot use the stash,
+  // and fall back to Members if a previous session left Stash selected.
+  const configureRenderParts = sheetClass.prototype._configureRenderParts;
+  sheetClass.prototype._configureRenderParts = function (options) {
+    const parts = configureRenderParts.call(this, options);
+    if (!canUseStash()) {
+      delete parts.stash;
+      if (this.tabGroups?.sheet === "stash") this.tabGroups.sheet = "members";
+    }
+    return parts;
+  };
+}
+
+/* ─── Fallback Tab Navigation ───
+ * Groups that do not track advancement render no tab navigation of their own
+ * (Crucible drops the `tabs` part), which would leave the stash unreachable.
+ * In that case we add a minimal Members/Stash nav so the tab can be opened. */
+
+function _ensureStashTabNav(app, element) {
+  const content = element.querySelector(".window-content");
+  if (!content || content.querySelector("nav.tabs")) return;
+
+  const active = app.tabGroups?.sheet ?? "members";
+  const nav = document.createElement("nav");
+  nav.className = "sheet-tabs tabs";
+  nav.setAttribute("aria-roledescription", game.i18n.localize("SHEETS.FormNavLabel"));
+  for (const { id, icon, label } of [
+    { id: "members", icon: "fa-solid fa-users", label: "ACTOR.GROUP.TABS.members" },
+    { id: "stash", icon: "fa-solid fa-box-open", label: "ACTOR.GROUP.TABS.stash" }
+  ]) {
+    const button = document.createElement("a");
+    button.dataset.action = "tab";
+    button.dataset.group = "sheet";
+    button.dataset.tab = id;
+    if (id === active) button.classList.add("active");
+    button.innerHTML = `<i class="${icon}" inert></i><span>${game.i18n.localize(label)}</span>`;
+    nav.appendChild(button);
+  }
+
+  const header = content.querySelector(".group-header");
+  if (header) header.after(nav);
+  else content.prepend(nav);
+}
+
+Hooks.on("renderCrucibleGroupActorSheet", (app, element) => {
+  if (app.actor?.type !== "group") return;
 
   // Stash entries are immutable between flag writes, and any flag write
   // triggers a re-render. Clear the tooltip cache so stale rendered cards
   // from a previous render cycle are never served.
   stashTooltip.clearCache();
 
-  const windowContent = element.querySelector(".window-content");
-  if (!windowContent) return;
+  if (!canUseStash()) return;
 
-  const isEditable = app.isEditable;
-  const stashItems = _getStash(actor);
-  const activeTab = app._stashActiveTab || "members";
+  const section = element.querySelector('.tab[data-group="sheet"][data-tab="stash"]');
+  if (!section) return;
+
+  _ensureStashTabNav(app, element);
+
+  // Re-renders replace the part's DOM, so a fresh element gets fresh listeners.
+  // The guard avoids double-binding when the part was not re-rendered.
+  if (section.dataset.stashReady) return;
+  section.dataset.stashReady = "1";
+
   _log("renderCrucibleGroupActorSheet", {
-    actorId: actor.id,
-    isEditable,
-    itemCount: stashItems.length,
+    actorId: app.actor.id,
+    isEditable: app.isEditable,
     isGM: game.user.isGM,
-    role: game.user.role,
-    canUseStash: canUseStash()
+    role: game.user.role
   });
 
-  const tabBar = document.createElement("nav");
-  tabBar.className = "party-stash-tabs";
-  tabBar.innerHTML = `
-    <a class="party-stash-tab-item ${activeTab === "members" ? "active" : ""}" 
-       data-stash-tab="members">
-      <i class="fa-solid fa-users"></i> ${game.i18n.localize("CRUCIBLE_PARTY_STASH.TabMembers")}
-    </a>
-    <a class="party-stash-tab-item ${activeTab === "stash" ? "active" : ""}" 
-       data-stash-tab="stash">
-      <i class="fa-solid fa-box-open"></i> ${game.i18n.localize("CRUCIBLE_PARTY_STASH.TabStash")}
-      ${stashItems.length ? `<span class="stash-count">${stashItems.length}</span>` : ""}
-    </a>
-  `;
-
-  const originalChildren = Array.from(windowContent.childNodes);
-
-  const membersTab = document.createElement("div");
-  membersTab.className = `party-stash-panel ${activeTab === "members" ? "active" : ""}`;
-  membersTab.dataset.stashTab = "members";
-  for (const child of originalChildren) {
-    membersTab.appendChild(child);
-  }
-
-  const stashTab = document.createElement("div");
-  stashTab.className = `party-stash-panel ${activeTab === "stash" ? "active" : ""}`;
-  stashTab.dataset.stashTab = "stash";
-  stashTab.innerHTML = await _renderStashHTML(stashItems, isEditable, actor);
-
-  windowContent.innerHTML = "";
-  windowContent.appendChild(tabBar);
-  windowContent.appendChild(membersTab);
-  windowContent.appendChild(stashTab);
-
-  tabBar.addEventListener("click", (ev) => {
-    const link = ev.target.closest("[data-stash-tab]");
-    if (!link) return;
-    ev.preventDefault();
-    const t = link.dataset.stashTab;
-    app._stashActiveTab = t;
-    tabBar.querySelectorAll(".party-stash-tab-item").forEach(l => {
-      l.classList.toggle("active", l.dataset.stashTab === t);
-    });
-    windowContent.querySelectorAll(".party-stash-panel").forEach(p => {
-      p.classList.toggle("active", p.dataset.stashTab === t);
-    });
-  });
-
-  _activateStashDropListeners(stashTab, actor);
-  _activateStashActionListeners(stashTab, actor);
-
-  stashTooltip.bind(stashTab, actor);
+  _activateStashDropListeners(section, app.actor);
+  _activateStashActionListeners(section, app.actor);
+  stashTooltip.bind(section, app.actor);
 });
 
 Hooks.on("renderActorSheetV2", (app, element) => {

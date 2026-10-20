@@ -13,7 +13,7 @@ Adds a **Stash** tab to the Group Actor sheet where players can pool items, dist
 
 ## Features
 
-- **Shared Stash Tab** — A new tab on the Crucible Group Actor sheet for pooling party items alongside the existing Members tab.
+- **Shared Stash Tab** — A new tab on the Crucible Group Actor sheet for pooling party items, alongside the sheet's own Members and Milestones tabs.
 - **Drag & Drop** — Drag items from any character sheet into the stash, or drag them back out to a character.
 - **Split on Deposit** — When stashing a stacked item (e.g. 5 Healing Potions), choose how many to stash. The source keeps the remainder.
 - **Split on Withdrawal** — When giving or dragging a stashed stack to a character, choose how many to take. Remainder stays in the stash.
@@ -49,9 +49,9 @@ Download `module.zip` from the [latest release](https://github.com/Ebonhawk3829/
 | Requirement | Version |
 |---|---|
 | Foundry VTT | v14+ |
-| Crucible | 0.10.0+ |
+| Crucible | 0.11.2+ |
 
-This module **only** works with the Crucible game system. It hooks into `CrucibleGroupActorSheet` and will not activate for other systems.
+This module **only** works with the Crucible game system. It registers a template part and tab on `CrucibleGroupActorSheet` and will not activate for other systems.
 
 ## Settings
 
@@ -67,7 +67,7 @@ Configurable under **Settings** → **Module Settings** → **Crucible Party Sta
 
 ## Usage
 
-1. **Open a Group Actor sheet** — the module adds a tab bar with **Members** and **Stash** tabs.
+1. **Open a Group Actor sheet** — the module adds a **Shared Stash** tab alongside the sheet's **Members** and **Milestones** tabs.
 2. **Add items** — Drag an item from any Hero or Adversary character sheet onto the Stash tab. For stacked items (qty > 1), a dialog lets you choose how many to stash.
 3. **Retrieve items** — Either drag an item from the stash onto a character sheet, or click the give button and pick a party member from the list. For stacked items, a dialog lets you choose how many to take.
 4. **Auto-merge** — Stashing an item that matches an existing stash entry (same affixes, quality, etc.) automatically increments the existing entry's quantity.
@@ -78,6 +78,8 @@ Configurable under **Settings** → **Module Settings** → **Crucible Party Sta
 ## Compatibility
 
 This module targets Crucible's `CrucibleGroupActorSheet` and uses Foundry V14 APIs including `ApplicationV2`, `DialogV2`, `NumberField` settings, and Handlebars template rendering under the `foundry.applications.handlebars` namespace.
+
+It requires **Crucible 0.11.2 or newer**. From 0.11.2 the group sheet is built from template parts with its own tab group (Members / Milestones); the module registers a `stash` part and a matching `stash` tab on that sheet, so the system's own tab navigation and `ApplicationV2#changeTab` handle showing and hiding the panel. Earlier Crucible releases do not expose that structure and are not supported.
 
 It is designed to be non-destructive — stash data is stored as a flag on the Group Actor (`crucible-party-stash.stash`) and does not modify any core Crucible data models.
 

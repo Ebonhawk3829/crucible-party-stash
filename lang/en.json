@@ -1,7 +1,6 @@
 {
   "CRUCIBLE_PARTY_STASH.ModuleName": "Crucible Party Stash",
-  "CRUCIBLE_PARTY_STASH.TabMembers": "Members",
-  "CRUCIBLE_PARTY_STASH.TabStash": "Shared Stash",
+  "ACTOR.GROUP.TABS.stash": "Shared Stash",
   "CRUCIBLE_PARTY_STASH.StashEmpty": "The party stash is empty.",
   "CRUCIBLE_PARTY_STASH.DragHint": "Drag items here from character sheets to add them to the shared stash.",
   "CRUCIBLE_PARTY_STASH.DragHintStash": "Drag items here from character sheets, or drag them back to a character.",

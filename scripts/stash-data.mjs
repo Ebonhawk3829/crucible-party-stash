@@ -422,7 +422,8 @@ export function _resolveGroupMembers(groupActor) {
  */
 export const STASH_MIGRATIONS = Object.freeze([
   { id: "resync-compendium-0.11.0", requires: "0.11.0", fn: _resyncStashFromCompendium },
-  { id: "resync-compendium-0.11.1", requires: "0.11.1", fn: _resyncStashFromCompendium }
+  { id: "resync-compendium-0.11.1", requires: "0.11.1", fn: _resyncStashFromCompendium },
+  { id: "resync-compendium-0.11.2", requires: "0.11.2", fn: _resyncStashFromCompendium }
 ]);
 
 /**

@@ -141,9 +141,13 @@ function _canGiveToAnyone(groupActor) {
   return writable.length > 0;
 }
 
-/* ─── Render the stash panel HTML ─── */
+/* ─── Build the stash panel context ───
+ * The stash is a native template part of the group sheet (see main.mjs), so
+ * Foundry renders templates/stash-panel.hbs itself. This builds the context
+ * Crucible's own group-sheet context is merged with. */
 
-async function _renderStashHTML(items, isEditable, groupActor) {
+function _prepareStashContext(groupActor, isEditable) {
+  const items = _getStash(groupActor);
   const localized = items.map(item => ({
     ...item,
     typeLabel: CONFIG.Item.typeLabels?.[item.type]
@@ -153,7 +157,7 @@ async function _renderStashHTML(items, isEditable, groupActor) {
     value: _itemValueInfo(item)
   }));
   const groups = _groupStashItems(localized);
-  _log("_renderStashHTML", {
+  _log("_prepareStashContext", {
     isEditable,
     itemCount: items.length,
     physicalTypes: SYSTEM?.ITEM?.PHYSICAL_ITEM_TYPES
@@ -161,34 +165,28 @@ async function _renderStashHTML(items, isEditable, groupActor) {
       : "UNAVAILABLE — using fallback list",
     groups: groups.map(g => ({ key: g.key, label: g.label, count: g.items.length }))
   });
-  try {
-    // Denomination chips render highest-value first (pp → cp)
-    const currencyList = Object.entries(crucible?.CONFIG?.currency ?? {})
-      .toSorted((a, b) => b[1].multiplier - a[1].multiplier)
-      .map(([key, denom]) => ({ key, ...denom }));
-    return await foundry.applications.handlebars.renderTemplate(
-      TEMPLATE_STASH,
-      {
-        items: localized, groups, isEmpty: items.length === 0, isEditable,
-        pool: _getCurrency(groupActor),
-        shapedCurrency: _isShapedCurrency(),
-        currencyList,
-        isGM: game.user.isGM,
-        canGive: _canGiveToAnyone(groupActor),
-        // Role-aware button framing: GM hands out ("give"), player takes ("take")
-        giveActionLabel: game.user.isGM
-          ? game.i18n.localize("CRUCIBLE_PARTY_STASH.GiveToCharacter")
-          : game.i18n.localize("CRUCIBLE_PARTY_STASH.TakeFromStash"),
-        giveActionIcon: game.user.isGM ? "fa-solid fa-hand-holding" : "fa-solid fa-hand-holding-dollar",
-        formatCurrency: _formatCurrency
-      }
-    );
-  } catch (err) {
-    console.error(`${MODULE_ID} | Template render failed`, err);
-    return `<div class="stash-empty">
-      <p><i class="fa-solid fa-exclamation-triangle"></i> ${game.i18n.localize("CRUCIBLE_PARTY_STASH.TemplateError")}</p>
-    </div>`;
-  }
+
+  // Denomination chips render highest-value first (pp → cp)
+  const currencyList = Object.entries(crucible?.CONFIG?.currency ?? {})
+    .toSorted((a, b) => b[1].multiplier - a[1].multiplier)
+    .map(([key, denom]) => ({ key, ...denom }));
+
+  return {
+    groups,
+    isEmpty: items.length === 0,
+    isEditable,
+    pool: _getCurrency(groupActor),
+    shapedCurrency: _isShapedCurrency(),
+    currencyList,
+    isGM: game.user.isGM,
+    canGive: _canGiveToAnyone(groupActor),
+    // Role-aware button framing: GM hands out ("give"), player takes ("take")
+    giveActionLabel: game.user.isGM
+      ? game.i18n.localize("CRUCIBLE_PARTY_STASH.GiveToCharacter")
+      : game.i18n.localize("CRUCIBLE_PARTY_STASH.TakeFromStash"),
+    giveActionIcon: game.user.isGM ? "fa-solid fa-hand-holding" : "fa-solid fa-hand-holding-dollar",
+    formatCurrency: _formatCurrency
+  };
 }
 
 /* ─── Drop: accept items INTO the stash ─── */
@@ -284,8 +282,6 @@ function _activateStashDropListeners(stashTab, groupActor) {
         : -1;
       if (mergeIdx !== -1) {
         s[mergeIdx].system.quantity = (s[mergeIdx].system.quantity ?? 1) + chosenQty;
-        const sheet = groupActor.sheet;
-        if (sheet) sheet._stashActiveTab = "stash";
         await _setStash(groupActor, s);
         return { name: item.name, merged: true, totalQty: s[mergeIdx].system.quantity };
       }
@@ -299,8 +295,6 @@ function _activateStashDropListeners(stashTab, groupActor) {
       itemData._stashId = foundry.utils.randomID();
       itemData.system.quantity = chosenQty;
       s.push(itemData);
-      const sheet = groupActor.sheet;
-      if (sheet) sheet._stashActiveTab = "stash";
       await _setStash(groupActor, s);
       return { name: item.name, merged: false };
     });
@@ -356,8 +350,6 @@ async function _editStashQuantity(groupActor, stashId) {
     const idx = s.findIndex(e => e._stashId === stashId);
     if (idx === -1) return null;
     s[idx].system.quantity = newQty;
-    const sheet = groupActor.sheet;
-    if (sheet) sheet._stashActiveTab = "stash";
     await _setStash(groupActor, s);
     return s[idx];
   });
@@ -436,8 +428,6 @@ function _activateStashActionListeners(stashTab, groupActor) {
         const idx = s.findIndex(e => e._stashId === stashId);
         if (idx === -1) return null;
         const [item] = s.splice(idx, 1);
-        const sheet = groupActor.sheet;
-        if (sheet) sheet._stashActiveTab = "stash";
         await _setStash(groupActor, s);
         return item;
       });
@@ -524,4 +514,4 @@ function _activateStashActionListeners(stashTab, groupActor) {
   });
 }
 
-export { _renderStashHTML, _activateStashDropListeners, _activateStashActionListeners };
+export { _prepareStashContext, _activateStashDropListeners, _activateStashActionListeners };

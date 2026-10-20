@@ -171,8 +171,6 @@ async function _transferFromStash(groupActor, stashId, targetActor, quantity) {
     } else {
       stash.splice(entryIdx, 1);
     }
-    const sheet = groupActor.sheet;
-    if (sheet) sheet._stashActiveTab = "stash";
     await _setStash(groupActor, stash);
 
     return entry.name;
