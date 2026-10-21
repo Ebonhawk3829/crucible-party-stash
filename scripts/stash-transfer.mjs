@@ -286,9 +286,10 @@ export function _setupHeroDropInterception(app, element) {
  * @param {object} [opts]
  * @param {Record<string, number>|number} [opts.max]      shaped/number cap; per-field max in shaped mode, base-unit max in shapeless mode
  * @param {Record<string, number>|number} [opts.show]    balance to display as a breakdown above the fields
+ * @param {string} [opts.okLabel]                        confirm button label; defaults to a generic Confirm
  * @returns {Promise<Record<string, number>|null>} shaped amounts, or null on cancel
  */
-async function _promptCurrencyAmount(title, label, { max, show } = {}) {
+async function _promptCurrencyAmount(title, label, { max, show, okLabel } = {}) {
   const cfg = crucible?.CONFIG?.currency ?? {};
   const denominations = Object.entries(cfg).toSorted((a, b) => b[1].multiplier - a[1].multiplier);
   const shaped = _isShapedCurrency();
@@ -331,7 +332,7 @@ async function _promptCurrencyAmount(title, label, { max, show } = {}) {
       window: { title, icon: "fa-solid fa-coins" },
       content: contentHTML,
       ok: {
-        label: game.i18n.localize("CRUCIBLE_PARTY_STASH.Give"),
+        label: okLabel ?? game.i18n.localize("CRUCIBLE_PARTY_STASH.Confirm"),
         icon: "fa-solid fa-check",
         callback: (event, button) => {
           const amounts = {};
@@ -383,7 +384,7 @@ async function _takeCurrency(groupActor) {
   const amounts = await _promptCurrencyAmount(
     game.i18n.localize("CRUCIBLE_PARTY_STASH.TakeCurrencyTitle"),
     game.i18n.localize("CRUCIBLE_PARTY_STASH.TakeCurrencyLabel"),
-    { max: pool, show: pool }
+    { max: pool, show: pool, okLabel: game.i18n.localize("CRUCIBLE_PARTY_STASH.Take") }
   );
   if (!amounts) return;
 
@@ -657,7 +658,7 @@ async function _depositCurrency(groupActor) {
   const amounts = await _promptCurrencyAmount(
     game.i18n.localize("CRUCIBLE_PARTY_STASH.DepositCurrencyTitle"),
     game.i18n.localize("CRUCIBLE_PARTY_STASH.DepositCurrencyLabel"),
-    { max: shaped ? fundsShape : funds, show: funds }
+    { max: shaped ? fundsShape : funds, show: funds, okLabel: game.i18n.localize("CRUCIBLE_PARTY_STASH.Deposit") }
   );
   if (!amounts) return;
 
@@ -688,7 +689,8 @@ async function _depositCurrency(groupActor) {
 async function _createCurrency(groupActor) {
   const amounts = await _promptCurrencyAmount(
     game.i18n.localize("CRUCIBLE_PARTY_STASH.CreateCurrencyTitle"),
-    game.i18n.localize("CRUCIBLE_PARTY_STASH.CreateCurrencyLabel")
+    game.i18n.localize("CRUCIBLE_PARTY_STASH.CreateCurrencyLabel"),
+    { okLabel: game.i18n.localize("CRUCIBLE_PARTY_STASH.Create") }
   );
   if (!amounts) return;
 
