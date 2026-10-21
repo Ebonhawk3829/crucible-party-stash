@@ -72,7 +72,25 @@ Hooks.once("init", async () => {
 
 // Patched after `init` so Crucible has finished exposing its API, and before
 // `ready` so no group sheet has rendered yet.
-Hooks.once("setup", () => _registerGroupSheetStashTab());
+Hooks.once("setup", () => {
+  const sheetClass = crucible?.api?.applications?.CrucibleGroupActorSheet;
+  if (!sheetClass) {
+    console.error(`${MODULE_ID} | CrucibleGroupActorSheet not found — the Shared Stash tab is unavailable.`);
+    return;
+  }
+  _enableGroupSheetResizing(sheetClass);
+  _registerGroupSheetStashTab(sheetClass);
+});
+
+/* ─── Sheet Resizing ───
+ * Crucible's group sheet declares a fixed default size and leaves ApplicationV2's
+ * `window.resizable` default of false, so the window has no resize handle. Opt in
+ * so the stash tab and members list can use more of a wide display. */
+
+function _enableGroupSheetResizing(sheetClass) {
+  sheetClass.DEFAULT_OPTIONS.window ??= {};
+  sheetClass.DEFAULT_OPTIONS.window.resizable = true;
+}
 
 /* ─── Native Tab Integration ───
  *
@@ -88,13 +106,7 @@ Hooks.once("setup", () => _registerGroupSheetStashTab());
  * showing and hiding the panel, so the stash tab coexists with Members and
  * Milestones instead of competing with them. */
 
-function _registerGroupSheetStashTab() {
-  const sheetClass = crucible?.api?.applications?.CrucibleGroupActorSheet;
-  if (!sheetClass) {
-    console.error(`${MODULE_ID} | CrucibleGroupActorSheet not found — the Shared Stash tab is unavailable.`);
-    return;
-  }
-
+function _registerGroupSheetStashTab(sheetClass) {
   sheetClass.PARTS.stash = {
     template: TEMPLATE_STASH,
     scrollable: [".stash-scroll"]
