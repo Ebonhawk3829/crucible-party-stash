@@ -101,16 +101,32 @@ function _registerGroupSheetStashTab() {
   };
   sheetClass.TABS.sheet.tabs.push({ id: "stash", icon: "fa-solid fa-box-open" });
 
+  // Remember the tab the user selects so it survives a re-render. Crucible
+  // forces the Members tab for groups that do not track advancement (it renders
+  // no tab navigation for those), which would otherwise yank the user back to
+  // Members on every stash update.
+  const changeTab = sheetClass.prototype.changeTab;
+  sheetClass.prototype.changeTab = function (tab, group, options) {
+    const result = changeTab.call(this, tab, group, options);
+    if (group === "sheet") this._stashPreferredTab = tab;
+    return result;
+  };
+
   // Supply the stash context to the part, and hide the tab entirely when the
   // acting user does not meet the configured minimum role.
   const prepareContext = sheetClass.prototype._prepareContext;
   sheetClass.prototype._prepareContext = async function (options) {
     const context = await prepareContext.call(this, options);
-    if (canUseStash() && this.actor?.type === "group") {
-      Object.assign(context, _prepareStashContext(this.actor, this.isEditable));
-    } else if (context.tabs) {
-      delete context.tabs.stash;
+    if (!canUseStash() || this.actor?.type !== "group") {
+      if (context.tabs) delete context.tabs.stash;
+      return context;
     }
+    const preferred = this._stashPreferredTab;
+    if (preferred && this.tabGroups.sheet !== preferred) {
+      this.tabGroups.sheet = preferred;
+      context.tabs = this._prepareTabs("sheet");
+    }
+    Object.assign(context, _prepareStashContext(this.actor, this.isEditable));
     return context;
   };
 

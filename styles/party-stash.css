@@ -1,11 +1,18 @@
 /* ─── Tab Panel ───
  * The stash is a native tab of the group sheet (see main.mjs). Visibility is
  * owned by Foundry's `.tab[data-tab]:not(.active)` rule, so every layout rule
- * here is scoped to `.active` and never forces the section to display. */
+ * here is scoped to `.active` and never forces the section to display.
+ *
+ * The section also carries Crucible's `sheet-section flexcol` classes, and
+ * `.sheet-section.flexcol` sets `align-items: center` (for the movement and
+ * advancement hex panels). Stretch the cross axis back so the currency bar,
+ * list and rows fill the sheet width instead of shrink-wrapping. */
 
 .crucible.actor-group .tab.stash.active {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  width: 100%;
   gap: 0.5rem;
   min-height: 0;
 }
