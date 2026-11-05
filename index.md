@@ -67,6 +67,7 @@ Download `module.zip` from the [latest release](https://github.com/Ebonhawk3829/
 |---|---|
 | Foundry VTT | v14+ |
 | Crucible | 0.11.2+ |
+| Verified with | Foundry VTT 14.370 · Crucible 0.11.3 |
 
 This module **only** works with the Crucible game system, and requires **Crucible 0.11.2 or newer** — it registers a template part and tab on `CrucibleGroupActorSheet` and will not activate for other systems or older Crucible releases.
 
