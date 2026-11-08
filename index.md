@@ -36,7 +36,7 @@ The stash keeps these items organized in one place and out of the way, while sti
 - **Drag & Drop Loot Management** — Drag items from any character sheet into the shared stash, or drag them back out to a character.
 - **Split on Deposit** — When stashing a stacked item (e.g. 5 Healing Potions), choose how many to deposit. The source keeps the remainder.
 - **Split on Withdrawal** — When giving or dragging a stashed stack to a character, choose how many to take. The remainder stays in the stash.
-- **Auto-Merge Stacks** — Stashing an item that matches an existing entry (same type, affixes, quality) increments the existing quantity instead of creating a duplicate.
+- **Auto-Merge Stacks** — Stashing an item that matches an existing entry in the same pile (same type, affixes, quality) increments the existing quantity instead of creating a duplicate. If a match already exists, a prompt asks which pile the deposit joins.
 - **Give to Character** — Click the give button to hand an item directly to any party member via a dropdown picker.
 - **Capacity Limit** — Set a maximum number of stash slots (0 = unlimited). Merged entries reuse existing slots.
 - **Item Type Grouping** — Stash entries are grouped under a heading by item type (Weapon, Armor, Consumable…) rather than repeating the type on every card. Only types that count as inventory produce a heading; anything else is collected into a trailing "Other" group so nothing is hidden.

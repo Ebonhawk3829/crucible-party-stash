@@ -18,7 +18,7 @@ Adds a **Stash** tab to the Group Actor sheet where players can pool items, dist
 - **Drag & Drop** — Drag items from any character sheet into the stash, or drag them back out to a character.
 - **Split on Deposit** — When stashing a stacked item (e.g. 5 Healing Potions), choose how many to stash. The source keeps the remainder.
 - **Split on Withdrawal** — When giving or dragging a stashed stack to a character, choose how many to take. Remainder stays in the stash.
-- **Auto-Merge** — Stashing an item that matches an existing stash entry (same type, affixes, quality) increments the existing entry's quantity instead of creating a duplicate.
+- **Auto-Merge** — Stashing an item that matches an existing stash entry in the same pile (same type, affixes, quality) increments the existing entry's quantity instead of creating a duplicate. When a match already exists, a prompt asks which pile the deposit joins.
 - **Give to Character** — Click the give button to hand an item directly to any party member via a dropdown picker.
 - **Capacity Limit** — Set a maximum number of stash slots the stash can hold (0 = unlimited). Merged entries reuse existing slots.
 - **Item Type Grouping** — Stash entries are grouped under a heading by item type (Weapon, Armor, Consumable…) rather than repeating the type on every card. Only types that count as inventory produce a heading; anything else is collected into a trailing "Other" group so nothing is hidden.
@@ -75,7 +75,7 @@ Configurable under **Settings** → **Module Settings** → **Crucible Party Sta
 1. **Open a Group Actor sheet** — the module adds a **Shared Stash** tab alongside the sheet's **Members** and **Milestones** tabs.
 2. **Add items** — Drag an item from any Hero or Adversary character sheet onto the Stash tab. For stacked items (qty > 1), a dialog lets you choose how many to stash.
 3. **Retrieve items** — Either drag an item from the stash onto a character sheet, or click the give button and pick a party member from the list. For stacked items, a dialog lets you choose how many to take.
-4. **Auto-merge** — Stashing an item that matches an existing stash entry (same affixes, quality, etc.) automatically increments the existing entry's quantity.
+4. **Auto-merge** — Stashing an item that matches an existing stash entry in the same pile (same affixes, quality, etc.) automatically increments the existing entry's quantity. If a matching entry already exists, a prompt asks which pile the deposit joins.
 5. **Read the stash** — Items are grouped by type and sorted by name then value. Each row shows the item's value and, for stacks, its count beside the icon. Hover an item for its full card and value.
 6. **Edit quantities** — GMs can click the pen control on a stackable entry to set its quantity directly, without depositing and re-withdrawing.
 7. **Remove items** — Click the trash icon to delete an item from the stash entirely.
