@@ -9,12 +9,13 @@
 import {
   MODULE_ID,
   _readStash, _getStash, _setStash, _checkStashCapacity,
-  _isStackable, _stashEntryMatches, _withStashLock,
+  _isStackable, _stashEntryMatches, _sameStackItem, _isForSale, _isSaleable,
+  _withStashLock, _readLastSale, _sellPile, _undoLastSale,
   _getCurrency, _formatCurrency, _isShapedCurrency, _resolveGroupMembers, _log,
   _itemValueInfo, _baseItemName
 } from "./stash-data.mjs";
 import {
-  _promptQuantity, _pickRecipient, _initiateTransferToActor,
+  _promptQuantity, _pickRecipient, _promptPile, _initiateTransferToActor,
   _takeCurrency, _splitCurrency, _depositCurrency, _createCurrency, _exchangeCurrency
 } from "./stash-transfer.mjs";
 
@@ -70,13 +71,27 @@ function _isInventoryType(type) {
  * Only types with at least one entry produce a group. Non-inventory types
  * (talents, spells, ancestries…) are collected into a trailing "Other"
  * group so nothing is ever silently hidden.
+ *
+ * Entries flagged for sale are pulled out of their type groups into a single
+ * "Sell Pile" group pinned at the top, whose header carries the summed value
+ * of everything in it.
  * @param {object[]} items  localized stash entries
  * @returns {Array<{key: string, label: string, items: object[]}>}
  */
 function _groupStashItems(items) {
   const buckets = new Map();
   let other = null;
+  const sellPile = {
+    key: "sellPile",
+    label: game.i18n.localize("CRUCIBLE_PARTY_STASH.SellPile"),
+    items: [],
+    isSellPile: true
+  };
   for (const item of items) {
+    if (item.isForSale) {
+      sellPile.items.push(item);
+      continue;
+    }
     const key = item.type ?? "unknown";
     if (!_isInventoryType(key)) {
       other ??= {
@@ -102,7 +117,14 @@ function _groupStashItems(items) {
     other.items.sort(_compareStashItems);
     rest.push(other);
   }
-  return [...known, ...rest];
+  const groups = [...known, ...rest];
+  if (sellPile.items.length) {
+    sellPile.items.sort(_compareStashItems);
+    sellPile.total = sellPile.items.reduce((sum, i) => sum + (i.value?.total ?? 0), 0);
+    sellPile.totalLabel = _formatCurrency(sellPile.total);
+    groups.unshift(sellPile);
+  }
+  return groups;
 }
 
 /**
@@ -148,14 +170,26 @@ function _canGiveToAnyone(groupActor) {
 
 function _prepareStashContext(groupActor, isEditable) {
   const items = _getStash(groupActor);
-  const localized = items.map(item => ({
-    ...item,
-    typeLabel: CONFIG.Item.typeLabels?.[item.type]
-      ? game.i18n.localize(CONFIG.Item.typeLabels[item.type])
-      : item.type,
-    isStackable: _isStackable(item),
-    value: _itemValueInfo(item)
-  }));
+  const localized = items.map(item => {
+    const value = _itemValueInfo(item);
+    return {
+      ...item,
+      typeLabel: CONFIG.Item.typeLabels?.[item.type]
+        ? game.i18n.localize(CONFIG.Item.typeLabels[item.type])
+        : item.type,
+      isStackable: _isStackable(item),
+      isForSale: _isForSale(item),
+      // Valueless items cannot be marked for sale, but one already in the pile
+      // (e.g. it lost its value to a resync) must still be movable back out.
+      canTogglePile: value.total > 0 || _isForSale(item),
+      pileTooltip: _isForSale(item)
+        ? game.i18n.localize("CRUCIBLE_PARTY_STASH.MoveOutOfSellPile")
+        : (value.total > 0
+            ? game.i18n.localize("CRUCIBLE_PARTY_STASH.MoveToSellPile")
+            : game.i18n.localize("CRUCIBLE_PARTY_STASH.NoSaleValue")),
+      value
+    };
+  });
   const groups = _groupStashItems(localized);
   _log("_prepareStashContext", {
     isEditable,
@@ -180,6 +214,7 @@ function _prepareStashContext(groupActor, isEditable) {
     currencyList,
     isGM: game.user.isGM,
     canGive: _canGiveToAnyone(groupActor),
+    hasLastSale: !!_readLastSale(groupActor),
     // Role-aware button framing: GM hands out ("give"), player takes ("take")
     giveActionLabel: game.user.isGM
       ? game.i18n.localize("CRUCIBLE_PARTY_STASH.GiveToCharacter")
@@ -220,10 +255,12 @@ function _activateStashDropListeners(stashTab, groupActor) {
     const item = await Item.implementation.fromDropData(data);
     if (!item) return;
 
-    // Early capacity check — avoids dialog if full and no merge possible
+    // Early capacity check — avoids dialog if full and no merge possible.
+    // Uses same-item (not same-pile) matching so the check does not block a
+    // deposit that the user is about to route into a matching pile.
     const currentStash = _readStash(groupActor);
     const incomingData = item.toObject();
-    if (!_checkStashCapacity(currentStash).ok && !currentStash.some(e => _stashEntryMatches(e, incomingData))) {
+    if (!_checkStashCapacity(currentStash).ok && !currentStash.some(e => _sameStackItem(e, incomingData))) {
       ui.notifications.warn(game.i18n.format("CRUCIBLE_PARTY_STASH.StashFull", { capacity: game.settings.get(MODULE_ID, "stashCapacity") }));
       return;
     }
@@ -257,6 +294,18 @@ function _activateStashDropListeners(stashTab, groupActor) {
       }
     }
 
+    // ── Pile choice outside lock ──
+    // When the item already exists in the stash (in either pile) AND is
+    // saleable, let the user decide which pile this deposit joins rather than
+    // merging it silently. Valueless items can only join the holding pile.
+    const matchesExisting = _readStash(groupActor).some(e => _sameStackItem(e, incomingData));
+    let toForSale = false;
+    if (matchesExisting && _isSaleable(incomingData)) {
+      const picked = await _promptPile(game.i18n.localize("CRUCIBLE_PARTY_STASH.PileTitle"));
+      if (picked === null) return;
+      toForSale = picked;
+    }
+
     // ── Stash mutation under lock ──
     const result = await _withStashLock(groupActor.id, async () => {
       // Re-validate source — it may have changed while dialogs were open
@@ -276,6 +325,7 @@ function _activateStashDropListeners(stashTab, groupActor) {
 
       const s = _getStash(groupActor);
       const itemData = foundry.utils.deepClone(incomingData);
+      if (toForSale) itemData._stashForSale = true;
 
       const mergeIdx = _isStackable(itemData)
         ? s.findIndex(e => _stashEntryMatches(e, itemData))
@@ -361,6 +411,231 @@ async function _editStashQuantity(groupActor, stashId) {
   }
 }
 
+/* ─── Move between piles ───
+ * Toggle an entry between the holding pile and the Sell Pile. For a stack the
+ * user chooses how many units to move; a partial move splits the stack so the
+ * remainder stays put. The destination merges into an existing same-item entry
+ * already in the target pile, so at most one holding and one Sell Pile stack of
+ * an item exist. Dialogs run outside the lock; the entry is re-validated inside.
+ */
+async function _moveStashToPile(groupActor, stashId) {
+  const stash = _readStash(groupActor);
+  const entry = stash.find(e => e._stashId === stashId);
+  if (!entry) return;
+
+  // Defense-in-depth: the control is inert for valueless items, but a crafted
+  // click must not be able to mark one for sale either. An item already in the
+  // pile may always move back out, even if it is now valueless.
+  if (!_isForSale(entry) && !_isSaleable(entry)) {
+    ui.notifications.warn(game.i18n.localize("CRUCIBLE_PARTY_STASH.NoSaleValue"));
+    return;
+  }
+
+  const currentQty = entry.system?.quantity ?? 1;
+  const toForSale = !_isForSale(entry);
+  const stackable = _isStackable(entry);
+
+  let moveQty = currentQty;
+  if (stackable && currentQty > 1) {
+    moveQty = await _promptQuantity(
+      game.i18n.localize("CRUCIBLE_PARTY_STASH.MovePileQuantity"),
+      currentQty,
+      toForSale
+        ? game.i18n.localize("CRUCIBLE_PARTY_STASH.MoveToSellPile")
+        : game.i18n.localize("CRUCIBLE_PARTY_STASH.MoveToHolding"),
+      currentQty,
+      game.i18n.localize("CRUCIBLE_PARTY_STASH.Confirm")
+    );
+    if (!moveQty) return;
+  }
+
+  const result = await _withStashLock(groupActor.id, async () => {
+    const s = _getStash(groupActor);
+    const idx = s.findIndex(e => e._stashId === stashId);
+    if (idx === -1) return null;
+    const source = s[idx];
+    const sourceQty = source.system?.quantity ?? 1;
+    const qty = Math.min(moveQty, sourceQty);
+    if (qty <= 0) return null;
+
+    // Existing entry of the same item already in the destination pile.
+    const destIdx = s.findIndex((e, i) =>
+      i !== idx && _sameStackItem(e, source) && _isForSale(e) === toForSale
+    );
+
+    if (qty >= sourceQty) {
+      // Whole entry moves: merge into the destination, or flip its flag in place.
+      if (destIdx !== -1) {
+        s[destIdx].system.quantity = (s[destIdx].system.quantity ?? 1) + sourceQty;
+        s.splice(idx, 1);
+      } else if (toForSale) {
+        source._stashForSale = true;
+      } else {
+        delete source._stashForSale;
+      }
+    } else {
+      // Partial split: shave the source, add to (or create) the destination.
+      source.system.quantity = sourceQty - qty;
+      if (destIdx !== -1) {
+        s[destIdx].system.quantity = (s[destIdx].system.quantity ?? 1) + qty;
+      } else {
+        const cap = _checkStashCapacity(s);
+        if (!cap.ok) return { full: true, max: cap.max };
+        const split = foundry.utils.deepClone(source);
+        split._stashId = foundry.utils.randomID();
+        if (toForSale) split._stashForSale = true;
+        else delete split._stashForSale;
+        split.system.quantity = qty;
+        s.push(split);
+      }
+    }
+
+    await _setStash(groupActor, s);
+    return { name: source.name, qty, toForSale, partial: qty < sourceQty };
+  });
+
+  if (!result) return;
+  if (result.full) {
+    ui.notifications.warn(game.i18n.format("CRUCIBLE_PARTY_STASH.StashFull", { capacity: result.max }));
+    return;
+  }
+  const key = result.toForSale
+    ? (result.partial ? "MovedToSellPilePartial" : "MovedToSellPile")
+    : (result.partial ? "MovedToHoldingPartial" : "MovedToHolding");
+  ui.notifications.info(game.i18n.format(`CRUCIBLE_PARTY_STASH.${key}`, {
+    name: result.name, quantity: result.qty
+  }));
+}
+
+/* ─── Sell All ───
+ * GM flow: prompt for the merchant's percentage of value, then vend every Sell
+ * Pile entry to the pool. The dialog is a slider + number box with a live
+ * payout preview, mirroring the currency Exchange dialog's input wiring.
+ */
+async function _promptSellPct(baseTotal, count, max) {
+  const uid = foundry.utils.randomID();
+  const sliderId = `stash-sell-slider-${uid}`;
+  const boxId = `stash-sell-pct-${uid}`;
+  const previewId = `stash-sell-preview-${uid}`;
+  const rootSelector = `.stash-sell-dialog-${uid}`;
+  const initial = 100;
+
+  const contentHTML = `<div class="stash-dialog-content stash-sell-dialog ${rootSelector.slice(1)}">
+    <p class="hint">${game.i18n.format("CRUCIBLE_PARTY_STASH.SellPileSummary", {
+      count, value: _formatCurrency(baseTotal)
+    })}</p>
+    <div class="form-group">
+      <label>${game.i18n.localize("CRUCIBLE_PARTY_STASH.SellPileOfferLabel")}</label>
+      <div class="form-fields stash-sell-amount">
+        <input id="${sliderId}" type="range" min="0" max="${max}" step="1" value="${initial}">
+        <input id="${boxId}" type="number" min="0" max="${max}" step="1" value="${initial}">
+        <span>%</span>
+      </div>
+    </div>
+    <p class="stash-sell-preview" id="${previewId}"></p>
+  </div>`;
+
+  const getPct = () => Math.clamp(Math.trunc(Number(document.getElementById(boxId)?.value ?? 0)), 0, max);
+  const refreshPreview = () => {
+    const el = document.getElementById(previewId);
+    if (!el) return;
+    const pct = getPct();
+    const payout = Math.round(baseTotal * pct / 100);
+    el.textContent = game.i18n.format("CRUCIBLE_PARTY_STASH.SellPilePreview", {
+      offer: _formatCurrency(payout), pct
+    });
+  };
+  const onInput = (ev) => {
+    if (!ev.target.closest?.(rootSelector)) return;
+    if (ev.target.id === sliderId) {
+      const box = document.getElementById(boxId);
+      if (box) box.value = ev.target.value;
+    } else if (ev.target.id === boxId) {
+      const slider = document.getElementById(sliderId);
+      if (slider) slider.value = String(getPct());
+    } else {
+      return;
+    }
+    refreshPreview();
+  };
+  document.addEventListener("input", onInput, true);
+
+  // DialogV2 renders asynchronously relative to this call, so poll for the
+  // field before showing the initial preview.
+  const initPoll = setInterval(() => {
+    if (document.getElementById(boxId)) {
+      clearInterval(initPoll);
+      refreshPreview();
+    }
+  }, 50);
+
+  try {
+    const result = await foundry.applications.api.DialogV2.prompt({
+      window: {
+        title: game.i18n.localize("CRUCIBLE_PARTY_STASH.SellAllTitle"),
+        icon: "fa-solid fa-sack-dollar"
+      },
+      content: contentHTML,
+      ok: {
+        label: game.i18n.localize("CRUCIBLE_PARTY_STASH.SellConfirm"),
+        icon: "fa-solid fa-sack-dollar",
+        callback: () => getPct()
+      },
+      rejectClose: false
+    });
+    return typeof result === "number" ? result : null;
+  } catch (err) {
+    console.error(`${MODULE_ID} | _promptSellPct error:`, err);
+    return null;
+  } finally {
+    clearInterval(initPoll);
+    document.removeEventListener("input", onInput, true);
+  }
+}
+
+async function _sellAll(groupActor) {
+  const entries = _readStash(groupActor).filter(_isForSale);
+  if (!entries.length) {
+    ui.notifications.warn(game.i18n.localize("CRUCIBLE_PARTY_STASH.SellPileEmpty"));
+    return;
+  }
+  const baseTotal = entries.reduce((sum, e) => sum + _itemValueInfo(e).total, 0);
+  const max = Math.max(Number(game.settings.get(MODULE_ID, "sellMultiplierMax")) || 200, 1);
+  const pct = await _promptSellPct(baseTotal, entries.length, max);
+  if (pct === null) return;
+
+  try {
+    const result = await _sellPile(groupActor, pct);
+    if (!result || result.empty) {
+      ui.notifications.warn(game.i18n.localize("CRUCIBLE_PARTY_STASH.SellPileEmpty"));
+      return;
+    }
+    ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.SellAllDone", {
+      count: result.count, amount: _formatCurrency(result.currencyAdded)
+    }));
+  } catch (err) {
+    console.error(`${MODULE_ID} | Sell All failed`, err);
+    ui.notifications.error(game.i18n.localize("CRUCIBLE_PARTY_STASH.SellAllFailed"));
+  }
+}
+
+async function _undoSale(groupActor) {
+  try {
+    const result = await _undoLastSale(groupActor);
+    if (!result || result.none) return;
+    if (result.insufficient) {
+      ui.notifications.warn(game.i18n.localize("CRUCIBLE_PARTY_STASH.UndoBlockedInsufficient"));
+      return;
+    }
+    ui.notifications.info(game.i18n.format("CRUCIBLE_PARTY_STASH.UndoSaleDone", {
+      count: result.count, amount: _formatCurrency(result.removed)
+    }));
+  } catch (err) {
+    console.error(`${MODULE_ID} | Undo sale failed`, err);
+    ui.notifications.error(game.i18n.localize("CRUCIBLE_PARTY_STASH.UndoSaleFailed"));
+  }
+}
+
 /* ─── Click: Give / Remove ───
  * Uses data-stash-action instead of data-action to prevent Foundry's
  * ApplicationV2 action system from intercepting clicks. */
@@ -419,6 +694,23 @@ function _activateStashActionListeners(stashTab, groupActor) {
       // (devtools, macro) from invoking the dialog anyway.
       if (!game.user.isGM) return;
       await _editStashQuantity(groupActor, stashId);
+      return;
+    }
+
+    if (action === "togglePile") {
+      await _moveStashToPile(groupActor, stashId);
+      return;
+    }
+
+    if (action === "sellAll") {
+      if (!game.user.isGM) return;
+      await _sellAll(groupActor);
+      return;
+    }
+
+    if (action === "undoSale") {
+      if (!game.user.isGM) return;
+      await _undoSale(groupActor);
       return;
     }
 

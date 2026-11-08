@@ -37,6 +37,16 @@ Hooks.once("init", async () => {
     scope: "world", config: true, type: Boolean, default: true
   });
 
+  game.settings.register(MODULE_ID, "sellMultiplierMax", {
+    name: "CRUCIBLE_PARTY_STASH.SellMultiplierMax",
+    hint: "CRUCIBLE_PARTY_STASH.SellMultiplierMaxHint",
+    scope: "world",
+    config: true,
+    type: new foundry.data.fields.NumberField({
+      required: true, integer: true, min: 1, initial: 200
+    })
+  });
+
   game.settings.register(MODULE_ID, "minRole", {
     name: "CRUCIBLE_PARTY_STASH.MinRole",
     hint: "CRUCIBLE_PARTY_STASH.MinRoleHint",

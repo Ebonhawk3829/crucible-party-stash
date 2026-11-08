@@ -58,10 +58,29 @@
       <p class="hint">{{localize "CRUCIBLE_PARTY_STASH.DragHintStash"}}</p>
       <div class="stash-groups">
         {{#each groups}}
-        <section class="stash-group" data-stash-type="{{this.key}}">
+        <section class="stash-group{{#if this.isSellPile}} stash-group-sell{{/if}}" data-stash-type="{{this.key}}">
           <header class="stash-group-header">
             <h3>{{this.label}}</h3>
             <span class="stash-group-count">{{this.items.length}}</span>
+            {{#if this.totalLabel}}<span class="stash-group-total">{{this.totalLabel}}</span>{{/if}}
+            {{#if this.isSellPile}}
+              {{#if ../isGM}}
+              <span class="stash-sell-controls">
+                {{#if ../hasLastSale}}
+                <button type="button" class="control" data-stash-action="undoSale"
+                   data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.UndoSale"}}"
+                   aria-label="{{localize "CRUCIBLE_PARTY_STASH.UndoSale"}}">
+                  <i class="fa-solid fa-rotate-left"></i>
+                </button>
+                {{/if}}
+                <button type="button" class="control" data-stash-action="sellAll"
+                   data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.SellAll"}}"
+                   aria-label="{{localize "CRUCIBLE_PARTY_STASH.SellAll"}}">
+                  <i class="fa-solid fa-sack-dollar"></i>
+                </button>
+              </span>
+              {{/if}}
+            {{/if}}
           </header>
           <ol class="items-list stash-list scrollable {{#unless ../isEditable}}no-controls{{/unless}}">
             {{#each this.items}}
@@ -89,7 +108,7 @@
                   <i class="fa-solid fa-pen"></i>
                 </button>
                 {{else}}
-                {{!-- Inert placeholder: keeps the controls column 3 slots wide on
+                {{!-- Inert placeholder: keeps the controls column 4 slots wide on
                       every row so the title zone never changes width. --}}
                 <span class="control placeholder" aria-hidden="true"></span>
                 {{/if}}
@@ -106,6 +125,22 @@
                 {{else}}
                 {{!-- Inert placeholder: no party member is writable by this user. --}}
                 <span class="control placeholder" aria-hidden="true"></span>
+                {{/if}}
+                {{#if this.canTogglePile}}
+                <button type="button" class="control stash-pile-toggle{{#if this.isForSale}} active{{/if}}"
+                   data-stash-action="togglePile" data-stash-id="{{this._stashId}}"
+                   data-tooltip="{{this.pileTooltip}}"
+                   aria-label="{{this.pileTooltip}}">
+                  <i class="fa-solid fa-tag"></i>
+                </button>
+                {{else}}
+                {{!-- Valueless items cannot be marked for sale; keep the slot so
+                      the controls column stays aligned. --}}
+                <button type="button" class="control stash-pile-toggle" disabled
+                   data-tooltip="{{this.pileTooltip}}"
+                   aria-label="{{this.pileTooltip}}">
+                  <i class="fa-solid fa-tag"></i>
+                </button>
                 {{/if}}
                 <button type="button" class="control" data-stash-action="remove" data-stash-id="{{this._stashId}}"
                    data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.RemoveFromStash"}}"

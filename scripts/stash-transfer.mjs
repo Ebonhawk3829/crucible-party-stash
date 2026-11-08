@@ -11,7 +11,7 @@
 import {
   MODULE_ID,
   _readStash, _getStash, _setStash,
-  _isStackable, _stashEntryMatches, _withStashLock,
+  _isStackable, _stashEntryMatches, _withStashLock, _stripStashFields,
   _getCurrency, _setCurrency, _addCurrency, _subtractCurrency,
   _formatCurrency, _resolveGroupMembers, _isShapedCurrency, _log
 } from "./stash-data.mjs";
@@ -116,6 +116,54 @@ async function _pickRecipient(choices, title, okLabel) {
   }
 }
 
+/* ─── Pile picker dialog ───
+ * Asked when a deposit matches an existing item, so the incoming stack joins
+ * the holding pile or the Sell Pile rather than silently merging into whichever
+ * one happens to exist.
+ * @returns {Promise<boolean|null>} true = Sell Pile, false = holding, null = cancelled
+ */
+async function _promptPile(title) {
+  const pileId = `stash-pile-${foundry.utils.randomID()}`;
+  const contentHTML = `<div class="stash-dialog-content">
+    <div class="form-group">
+      <label>${game.i18n.localize("CRUCIBLE_PARTY_STASH.PileLabel")}</label>
+      <div class="form-fields">
+        <select id="${pileId}" name="pile">
+          <option value="hold">${game.i18n.localize("CRUCIBLE_PARTY_STASH.PileHolding")}</option>
+          <option value="sell">${game.i18n.localize("CRUCIBLE_PARTY_STASH.SellPile")}</option>
+        </select>
+      </div>
+    </div>
+  </div>`;
+
+  try {
+    const picked = await foundry.applications.api.DialogV2.prompt({
+      window: {
+        title: title ?? game.i18n.localize("CRUCIBLE_PARTY_STASH.PileTitle"),
+        icon: "fa-solid fa-tag"
+      },
+      content: contentHTML,
+      ok: {
+        label: game.i18n.localize("CRUCIBLE_PARTY_STASH.Confirm"),
+        icon: "fa-solid fa-check",
+        // Return a string, not a boolean: DialogV2 keeps the dialog open when a
+        // callback resolves to literal false.
+        callback: (event, button) => {
+          const select = document.getElementById(pileId);
+          return select?.value === "sell" ? "sell" : "hold";
+        }
+      },
+      rejectClose: false
+    });
+    if (picked === "sell") return true;
+    if (picked === "hold") return false;
+    return null;
+  } catch (err) {
+    console.error(`${MODULE_ID} | _promptPile error:`, err);
+    return null;
+  }
+}
+
 /* ─── Transfer: stash → character ───
  * @param {Actor} groupActor
  * @param {string} stashId
@@ -142,7 +190,7 @@ async function _transferFromStash(groupActor, stashId, targetActor, quantity) {
     if (takeQty <= 0) return null;
 
     const itemData = foundry.utils.deepClone(entry);
-    delete itemData._stashId;
+    _stripStashFields(itemData);
     if (!_isStackable(entry)) {
       itemData.system.quantity = 1; // Safety clamp: Crucible enforces qty ≤ 1 for non-stackable items
     } else {
@@ -982,4 +1030,4 @@ async function _exchangeCurrencyDialog(denominations, pool) {
 }
 
 /* Re-export for stash-ui.mjs (the Give button uses these) */
-export { _promptQuantity, _pickRecipient, _initiateTransferToActor, _takeCurrency, _splitCurrency, _depositCurrency, _createCurrency, _exchangeCurrency };
+export { _promptQuantity, _pickRecipient, _promptPile, _initiateTransferToActor, _takeCurrency, _splitCurrency, _depositCurrency, _createCurrency, _exchangeCurrency };

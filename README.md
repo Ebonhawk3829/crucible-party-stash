@@ -22,6 +22,8 @@ Adds a **Stash** tab to the Group Actor sheet where players can pool items, dist
 - **Give to Character** — Click the give button to hand an item directly to any party member via a dropdown picker.
 - **Capacity Limit** — Set a maximum number of stash slots the stash can hold (0 = unlimited). Merged entries reuse existing slots.
 - **Item Type Grouping** — Stash entries are grouped under a heading by item type (Weapon, Armor, Consumable…) rather than repeating the type on every card. Only types that count as inventory produce a heading; anything else is collected into a trailing "Other" group so nothing is hidden.
+- **Sell Pile** — Mark entries as committed to sell; they collect into a **Sell Pile** group pinned at the top, whose header shows the combined value of everything in it. The tag control on any row moves that entry — or part of a stack, via a quantity prompt — into or out of the pile. Available to any stash user, and the marker lives only in the stash, never following an item onto a character sheet. Only items with a sale value can be marked.
+- **Sell All & Undo** — A GM-only control on the Sell Pile header vends the whole pile at a chosen percentage of value. A slider (bounded by the Maximum Merchant Offer setting) prompts for the merchant's offer, with a live payout preview; confirming moves the coin into the party currency pool and removes the sold items. A one-step **Undo** restores the last sale only — the items return to the Sell Pile and the coin is clawed back — so the rollback record stays a single entry rather than accumulating.
 - **Item Value & Quantity** — Each row shows what the item is worth in Crucible's denomination format, and stack counts sit in their own column beside the icon. A stack shows its total with the unit breakdown, e.g. `1PP 2GP (3 × 4GP)`. Hovering an item shows the same value in the item card tooltip.
 - **Sorted Within Groups** — Items are ordered by name (A→Z), then by value (highest first), so identical items sit together and the best of a cluster reads first.
 - **Party Currency Pool** — A shared currency pool on the Stash tab with deposit, take, GM create, and GM split flows. All amounts are entered per denomination (pp/gp/sp/cp).
@@ -65,6 +67,7 @@ Configurable under **Settings** → **Module Settings** → **Crucible Party Sta
 | Confirm Transfer | World | Enabled | For single items, show a confirmation dialog when moving to the stash. For stacks, a quantity prompt is always shown regardless of this setting. |
 | Minimum Role | World | Player | The minimum user role required to see and interact with the stash tab. |
 | Shaped Currency Pool | World | Enabled | **ON:** the pool is a literal pile of coins — pp/gp/sp/cp are tracked and spent separately, with no automatic conversion. Use the GM **Exchange** button to make change (e.g. 1pp → 10gp). **OFF:** the pool is an abstract purse — denominations are freely interchangeable and totals display in the largest possible denominations. Switching this setting reshapes the existing pool immediately. |
+| Maximum Merchant Offer | World | 200 | The upper bound of the Sell All percentage slider, as a percent of item value. 100 pays full value; higher allows haggling above value. |
 | Debug Logging | Client | Disabled | Write detailed stash diagnostics to the browser console (F12). Being client-scoped, it can be toggled live without a reload and won't affect other users. |
 
 ## Usage
@@ -76,6 +79,7 @@ Configurable under **Settings** → **Module Settings** → **Crucible Party Sta
 5. **Read the stash** — Items are grouped by type and sorted by name then value. Each row shows the item's value and, for stacks, its count beside the icon. Hover an item for its full card and value.
 6. **Edit quantities** — GMs can click the pen control on a stackable entry to set its quantity directly, without depositing and re-withdrawing.
 7. **Remove items** — Click the trash icon to delete an item from the stash entirely.
+8. **Sell the pile (GM)** — With items in the Sell Pile, click the sack control on its header, choose the merchant's percentage, and confirm. The coin lands in the party pool and the sold items are removed. The rotate control that appears next **undoes the most recent sale**, returning the items to the Sell Pile.
 
 ## Compatibility
 

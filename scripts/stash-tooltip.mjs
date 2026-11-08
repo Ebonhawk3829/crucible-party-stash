@@ -12,7 +12,7 @@
  * without reaching into our internals.
  * ──────────────────────────────────────────────────────────────── */
 
-import { MODULE_ID, _readStash, _itemValueInfo } from "./stash-data.mjs";
+import { MODULE_ID, _readStash, _itemValueInfo, _stripStashFields } from "./stash-data.mjs";
 
 const _TOOLTIP_CACHE_MAX = 50;
 
@@ -133,7 +133,7 @@ export const stashTooltip = {
     }
 
     const itemData = foundry.utils.deepClone(entry);
-    delete itemData._stashId;
+    _stripStashFields(itemData);
 
     let tempItem;
     try {

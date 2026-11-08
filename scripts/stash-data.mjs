@@ -97,12 +97,58 @@ export function _baseItemName(name) {
 }
 
 /**
- * Compare two stash entries for merge eligibility.
- * Both must be stackable and share the same base name (stripped of quantity prefix).
+ * Whether a stash entry sits in the Sell Pile.
+ * Absent/false means the holding pile. Stored as a module-owned field on the
+ * entry snapshot, mirroring `_stashId`, and never copied onto a real Item.
+ * @param {object} entry
+ * @returns {boolean}
  */
-export function _stashEntryMatches(a, b) {
+export function _isForSale(entry) {
+  return entry?._stashForSale === true;
+}
+
+/**
+ * Whether two item-data objects are the same stackable item, ignoring pile.
+ * Both must be stackable and share the same base name (stripped of the
+ * quantity prefix). This is the identity used to detect that a deposit
+ * matches an existing item at all, and to find a same-pile merge target.
+ */
+export function _sameStackItem(a, b) {
   if (!_isStackable(a) || !_isStackable(b)) return false;
   return _baseItemName(a.name) === _baseItemName(b.name);
+}
+
+/**
+ * Compare two stash entries for merge eligibility.
+ * Entries merge only when they are the same stackable item AND sit in the same
+ * pile, so a holding stack and a Sell Pile stack of one item can coexist.
+ */
+export function _stashEntryMatches(a, b) {
+  return _sameStackItem(a, b) && _isForSale(a) === _isForSale(b);
+}
+
+/**
+ * Strip module-owned bookkeeping fields from an entry before it is used to
+ * build a real Item (transfer out, tooltip card, price probe). These are
+ * stash-only metadata and must not leak onto actor items.
+ * @param {object} itemData
+ * @returns {object} the same object, mutated
+ */
+export function _stripStashFields(itemData) {
+  delete itemData._stashId;
+  delete itemData._stashForSale;
+  return itemData;
+}
+
+/**
+ * Whether a stash entry can be marked for sale — i.e. it resolves to a
+ * positive value. Valueless items (price 0, non-physical) are exempt from the
+ * Sell Pile so a sale can never vend something for nothing.
+ * @param {object} entry
+ * @returns {boolean}
+ */
+export function _isSaleable(entry) {
+  return _itemValueInfo(entry).total > 0;
 }
 
 /**
@@ -192,32 +238,69 @@ export async function _setCurrency(groupActor, shape) {
 }
 
 /**
- * Add a shaped amount to the pool. In shapeless mode the amounts are summed
- * to base units and re-allocated greedily (matching v1.5.0 behavior); in
- * shaped mode each denomination is added separately.
+ * Add a shaped amount to a pool, WITHOUT taking the stash lock. Pure: reads no
+ * actor and writes nothing. In shapeless mode the amounts are summed to base
+ * units and re-allocated greedily (matching v1.5.0 behavior); in shaped mode
+ * each denomination is added separately.
+ *
+ * The locked `_addCurrency` and the Sell All flow both build on this. They must
+ * not call `_addCurrency` from inside their own `_withStashLock` — that would
+ * deadlock on the per-actor mutex — so the pure step is factored out here.
+ * @param {Record<string, number>} current
+ * @param {Record<string, number>} add
+ * @returns {Record<string, number>} the new pool
+ */
+export function _sumCurrency(current, add) {
+  const base = _normalizeShape(current);
+  const inc = _normalizeShape(add);
+  if (_isShapedCurrency()) {
+    for (const key of Object.keys(base)) base[key] += inc[key] ?? 0;
+    return base;
+  }
+  const total = _shapeToBase(base) + _shapeToBase(inc);
+  return _normalizeShape(crucible.api.documents.CrucibleActor.allocateCurrency(Math.max(total, 0)));
+}
+
+/**
+ * Subtract a shaped amount from a pool, WITHOUT taking the stash lock. Pure.
+ * In shaped mode the subtraction is per-denomination and fails (returns null)
+ * if any denomination is insufficient. In shapeless mode the amounts are summed
+ * and compared against the pool's base-unit total.
+ * @param {Record<string, number>} current
+ * @param {Record<string, number>} sub
+ * @returns {Record<string, number>|null} the new pool, or null if insufficient
+ */
+export function _diffCurrency(current, sub) {
+  const base = _normalizeShape(current);
+  const dec = _normalizeShape(sub);
+  if (_isShapedCurrency()) {
+    for (const key of Object.keys(base)) {
+      if (base[key] < (dec[key] ?? 0)) return null;
+    }
+    for (const key of Object.keys(base)) base[key] -= (dec[key] ?? 0);
+    return base;
+  }
+  const total = _shapeToBase(base) - _shapeToBase(dec);
+  if (total < 0) return null;
+  return _normalizeShape(crucible.api.documents.CrucibleActor.allocateCurrency(total));
+}
+
+/**
+ * Add a shaped amount to the pool.
  * @param {Actor} groupActor
  * @param {Record<string, number>} amounts  per-denomination counts to add
  */
 export async function _addCurrency(groupActor, amounts) {
   const add = _normalizeShape(amounts);
   return _withStashLock(groupActor.id, async () => {
-    const current = _getCurrency(groupActor);
-    if (_isShapedCurrency()) {
-      for (const key of Object.keys(current)) current[key] += add[key] ?? 0;
-    } else {
-      const total = _shapeToBase(current) + _shapeToBase(add);
-      Object.assign(current, _normalizeShape(crucible.api.documents.CrucibleActor.allocateCurrency(total)));
-    }
-    await _setCurrency(groupActor, current);
-    return current;
+    const next = _sumCurrency(_getCurrency(groupActor), add);
+    await _setCurrency(groupActor, next);
+    return next;
   });
 }
 
 /**
- * Subtract a shaped amount from the pool. In shaped mode the subtraction is
- * per-denomination and fails (returns null) if any denomination is
- * insufficient. In shapeless mode the amounts are summed and compared
- * against the pool's base-unit total.
+ * Subtract a shaped amount from the pool.
  * @param {Actor} groupActor
  * @param {Record<string, number>} amounts  per-denomination counts to remove
  * @returns {Promise<Record<string, number>|null>} the new pool, or null if insufficient
@@ -225,19 +308,10 @@ export async function _addCurrency(groupActor, amounts) {
 export async function _subtractCurrency(groupActor, amounts) {
   const sub = _normalizeShape(amounts);
   return _withStashLock(groupActor.id, async () => {
-    const current = _getCurrency(groupActor);
-    if (_isShapedCurrency()) {
-      for (const key of Object.keys(current)) {
-        if (current[key] < (sub[key] ?? 0)) return null;
-      }
-      for (const key of Object.keys(current)) current[key] -= (sub[key] ?? 0);
-    } else {
-      const total = _shapeToBase(current) - _shapeToBase(sub);
-      if (total < 0) return null;
-      Object.assign(current, _normalizeShape(crucible.api.documents.CrucibleActor.allocateCurrency(total)));
-    }
-    await _setCurrency(groupActor, current);
-    return current;
+    const next = _diffCurrency(_getCurrency(groupActor), sub);
+    if (next === null) return null;
+    await _setCurrency(groupActor, next);
+    return next;
   });
 }
 
@@ -289,7 +363,7 @@ export function _scaledPrice(itemData) {
   let result = null;
   try {
     const data = foundry.utils.deepClone(itemData);
-    delete data._stashId;
+    _stripStashFields(data);
     const temp = new Item.implementation(data);
     const scaled = temp?.system?.price;
     if (Number.isFinite(scaled)) result = Math.max(Math.trunc(scaled), 0);
@@ -357,6 +431,99 @@ export function _formatCurrency(amount) {
     if (count) parts.push(`${count}${game.i18n.localize(denom.abbreviation)}`);
   }
   return parts.join(" ") || "0";
+}
+
+/* ─── Sell All / Undo ────────────────────────────────────────────
+ * Converts every entry in the Sell Pile to currency at a chosen percentage of
+ * its value. The operation runs under one stash lock and touches two flags
+ * (stash + currency) plus the undo record, so it is written defensively: the
+ * transient "before" state is captured and restored if any write throws.
+ *
+ * A single `lastSale` flag holds the most recent sale so it can be undone; the
+ * next sale overwrites it and an undo clears it, keeping the record to one.
+ * ──────────────────────────────────────────────────────────────── */
+
+/** The most recent sale record for a group, or null. */
+export function _readLastSale(groupActor) {
+  return groupActor.getFlag(MODULE_ID, "lastSale") ?? null;
+}
+
+/**
+ * Sell every entry in the Sell Pile, paying `pct` percent of the pile's total
+ * value (rounded to the nearest base unit) into the party currency pool.
+ * @param {Actor} groupActor
+ * @param {number} pct  percentage of value the merchant offers
+ * @returns {Promise<{count:number, baseTotal:number, payout:number, currencyAdded:Record<string,number>}|{empty:true}>}
+ */
+export async function _sellPile(groupActor, pct) {
+  return _withStashLock(groupActor.id, async () => {
+    const stashBefore = _getStash(groupActor);
+    const entries = stashBefore.filter(_isForSale);
+    if (!entries.length) return { empty: true };
+
+    const poolBefore = _getCurrency(groupActor);
+    const baseTotal = entries.reduce((sum, e) => sum + _itemValueInfo(e).total, 0);
+    const payout = Math.max(Math.round(baseTotal * (Number(pct) || 0) / 100), 0);
+    const currencyAdded = _normalizeShape(crucible.api.documents.CrucibleActor.allocateCurrency(payout));
+    const newPool = _sumCurrency(poolBefore, currencyAdded);
+    const remaining = stashBefore.filter(e => !_isForSale(e));
+    const record = {
+      at: Date.now(),
+      pct,
+      baseTotal,
+      payout,
+      currencyAdded,
+      entries: foundry.utils.deepClone(entries)
+    };
+
+    try {
+      await groupActor.setFlag(MODULE_ID, "lastSale", record);
+      await _setCurrency(groupActor, newPool);
+      await _setStash(groupActor, remaining);
+    } catch (err) {
+      // Best-effort rollback: a partial sale (items gone without coin, or coin
+      // with the items still present) is worse than no sale at all.
+      await _setCurrency(groupActor, poolBefore).catch(() => {});
+      await _setStash(groupActor, stashBefore).catch(() => {});
+      throw err;
+    }
+
+    return { count: entries.length, baseTotal, payout, currencyAdded };
+  });
+}
+
+/**
+ * Undo the most recent sale: restore its entries to the stash (rejoining the
+ * Sell Pile) and remove the currency it added. Aborts without changing
+ * anything if the pool no longer holds the full amount that was added.
+ * @param {Actor} groupActor
+ * @returns {Promise<{count:number, removed:number, pct:number}|{none:true}|{insufficient:true}>}
+ */
+export async function _undoLastSale(groupActor) {
+  return _withStashLock(groupActor.id, async () => {
+    const record = _readLastSale(groupActor);
+    if (!record || !Array.isArray(record.entries) || !record.entries.length) return { none: true };
+
+    const poolBefore = _getCurrency(groupActor);
+    const newPool = _diffCurrency(poolBefore, record.currencyAdded);
+    if (newPool === null) return { insufficient: true };
+
+    const stashBefore = _getStash(groupActor);
+    // Capacity is intentionally ignored here: undo is a corrective action.
+    const restored = [...stashBefore, ...foundry.utils.deepClone(record.entries)];
+
+    try {
+      await _setCurrency(groupActor, newPool);
+      await _setStash(groupActor, restored);
+      await groupActor.unsetFlag(MODULE_ID, "lastSale");
+    } catch (err) {
+      await _setCurrency(groupActor, poolBefore).catch(() => {});
+      await _setStash(groupActor, stashBefore).catch(() => {});
+      throw err;
+    }
+
+    return { count: record.entries.length, removed: record.payout, pct: record.pct };
+  });
 }
 
 /**

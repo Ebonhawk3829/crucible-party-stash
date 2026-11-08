@@ -65,11 +65,11 @@
 }
 
 /* Fixed-width controls column: the row is a grid, not a flex row, so the
-   title zone cannot grow or shrink when a row has 2 buttons instead of 3.
+   title zone cannot grow or shrink when a row offers fewer than 4 controls.
    --stash-controls-width is the "left margin" the controls align to. */
 .crucible.actor-group .stash-list .stash-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--stash-controls-width, 5.25rem);
+  grid-template-columns: minmax(0, 1fr) var(--stash-controls-width, 7rem);
   align-items: center;
   gap: 0.5rem;
   padding: 0.35rem 0.5rem;
@@ -203,6 +203,34 @@
   color: var(--color-warm-2, #c33);
 }
 
+/* Sell Pile toggle: a round control, hollow while holding and filled gold
+   when the entry is in the Sell Pile. */
+.crucible.actor-group .stash-list .stash-item .controls .control.stash-pile-toggle {
+  border-radius: 50%;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.crucible.actor-group .stash-list .stash-item .controls .control.stash-pile-toggle:hover {
+  color: var(--color-warm-1, #d4af37);
+}
+
+.crucible.actor-group .stash-list .stash-item .controls .control.stash-pile-toggle.active {
+  opacity: 1;
+  color: var(--color-warm-1, #d4af37);
+  background: rgba(212, 175, 55, 0.18);
+}
+
+/* Valueless items cannot be marked for sale. */
+.crucible.actor-group .stash-list .stash-item .controls .control.stash-pile-toggle:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
 /* ─── Stash Type Groups ───
  * Item type is rendered once as a group heading instead of as a tag on
  * every card. Heading styling deliberately mirrors the old .tag treatment
@@ -239,6 +267,69 @@
   background: rgba(255, 255, 255, 0.08);
   color: var(--color-text-light-highlight, #ccc);
   line-height: 1.2;
+}
+
+/* Sell Pile: pinned above the type groups with a gold accent, and a header
+   total showing the combined value of everything marked for sale. */
+.crucible.actor-group .stash-group-sell .stash-group-header {
+  border-bottom-color: var(--color-warm-1, #d4af37);
+}
+
+.crucible.actor-group .stash-group-sell .stash-group-header h3 {
+  color: var(--color-warm-1, #d4af37);
+}
+
+.crucible.actor-group .stash-group-total {
+  margin-left: auto;
+  font-size: var(--font-size-12, 0.75rem);
+  font-weight: 600;
+  color: var(--color-warm-1, #d4af37);
+  white-space: nowrap;
+}
+
+/* GM-only Sell All / Undo controls in the Sell Pile header. */
+.crucible.actor-group .stash-group-header .stash-sell-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.crucible.actor-group .stash-group-header .stash-sell-controls .control {
+  cursor: pointer;
+  opacity: 0.6;
+  padding: 0.15rem 0.35rem;
+  border-radius: 3px;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.crucible.actor-group .stash-group-header .stash-sell-controls .control:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-warm-1, #d4af37);
+}
+
+/* Sell dialog: slider + number box + live payout preview. */
+.stash-sell-dialog .stash-sell-amount {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stash-sell-dialog .stash-sell-amount input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.stash-sell-dialog .stash-sell-amount input[type="number"] {
+  flex: 0 0 4.5rem;
+  width: 4.5rem;
+}
+
+.stash-sell-dialog .stash-sell-preview {
+  min-height: 1em;
+  margin: 0.5rem 0 0;
+  font-weight: 600;
+  color: var(--color-warm-1, #d4af37);
 }
 
 /* ─── Currency Section ─── */
