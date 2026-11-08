@@ -117,46 +117,39 @@ async function _pickRecipient(choices, title, okLabel) {
 }
 
 /* ─── Pile picker dialog ───
- * Asked when a deposit matches an existing item, so the incoming stack joins
- * the holding pile or the Sell Pile rather than silently merging into whichever
- * one happens to exist.
- * @returns {Promise<boolean|null>} true = Sell Pile, false = holding, null = cancelled
+ * Asked only when a saleable deposit matches an item that already exists in
+ * BOTH piles, so the incoming stack joins the right one rather than merging
+ * silently. Two buttons rather than a dropdown: the choice is binary.
+ * @returns {Promise<boolean|null>} true = Sell Pile, false = keep, null = cancelled
  */
 async function _promptPile(title) {
-  const pileId = `stash-pile-${foundry.utils.randomID()}`;
-  const contentHTML = `<div class="stash-dialog-content">
-    <div class="form-group">
-      <label>${game.i18n.localize("CRUCIBLE_PARTY_STASH.PileLabel")}</label>
-      <div class="form-fields">
-        <select id="${pileId}" name="pile">
-          <option value="hold">${game.i18n.localize("CRUCIBLE_PARTY_STASH.PileHolding")}</option>
-          <option value="sell">${game.i18n.localize("CRUCIBLE_PARTY_STASH.SellPile")}</option>
-        </select>
-      </div>
-    </div>
-  </div>`;
-
   try {
-    const picked = await foundry.applications.api.DialogV2.prompt({
+    const picked = await foundry.applications.api.DialogV2.wait({
       window: {
         title: title ?? game.i18n.localize("CRUCIBLE_PARTY_STASH.PileTitle"),
         icon: "fa-solid fa-tag"
       },
-      content: contentHTML,
-      ok: {
-        label: game.i18n.localize("CRUCIBLE_PARTY_STASH.Confirm"),
-        icon: "fa-solid fa-check",
-        // Return a string, not a boolean: DialogV2 keeps the dialog open when a
-        // callback resolves to literal false.
-        callback: (event, button) => {
-          const select = document.getElementById(pileId);
-          return select?.value === "sell" ? "sell" : "hold";
+      content: `<div class="stash-dialog-content"><p>${game.i18n.localize("CRUCIBLE_PARTY_STASH.PilePrompt")}</p></div>`,
+      buttons: [
+        {
+          type: "button",
+          action: "sell",
+          label: game.i18n.localize("CRUCIBLE_PARTY_STASH.PileSell"),
+          icon: "fa-solid fa-sack-dollar",
+          callback: () => "sell"
+        },
+        {
+          type: "button",
+          action: "keep",
+          label: game.i18n.localize("CRUCIBLE_PARTY_STASH.PileKeep"),
+          icon: "fa-solid fa-box",
+          callback: () => "keep"
         }
-      },
+      ],
       rejectClose: false
     });
     if (picked === "sell") return true;
-    if (picked === "hold") return false;
+    if (picked === "keep") return false;
     return null;
   } catch (err) {
     console.error(`${MODULE_ID} | _promptPile error:`, err);

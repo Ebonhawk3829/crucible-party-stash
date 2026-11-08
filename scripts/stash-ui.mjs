@@ -73,7 +73,7 @@ function _isInventoryType(type) {
  * group so nothing is ever silently hidden.
  *
  * Entries flagged for sale are pulled out of their type groups into a single
- * "Sell Pile" group pinned at the top, whose header carries the summed value
+ * "Sell Pile" group pinned at the end, whose header carries the summed value
  * of everything in it.
  * @param {object[]} items  localized stash entries
  * @returns {Array<{key: string, label: string, items: object[]}>}
@@ -122,7 +122,7 @@ function _groupStashItems(items) {
     sellPile.items.sort(_compareStashItems);
     sellPile.total = sellPile.items.reduce((sum, i) => sum + (i.value?.total ?? 0), 0);
     sellPile.totalLabel = _formatCurrency(sellPile.total);
-    groups.unshift(sellPile);
+    groups.push(sellPile);
   }
   return groups;
 }
@@ -295,15 +295,21 @@ function _activateStashDropListeners(stashTab, groupActor) {
     }
 
     // ── Pile choice outside lock ──
-    // When the item already exists in the stash (in either pile) AND is
-    // saleable, let the user decide which pile this deposit joins rather than
-    // merging it silently. Valueless items can only join the holding pile.
-    const matchesExisting = _readStash(groupActor).some(e => _sameStackItem(e, incomingData));
+    // Prompt only when the item already exists in BOTH piles; otherwise the
+    // deposit merges into the single pile it already occupies (or starts in
+    // holding). Valueless items can only join the holding pile.
+    const matching = _readStash(groupActor).filter(e => _sameStackItem(e, incomingData));
+    const hasHolding = matching.some(e => !_isForSale(e));
+    const hasSell = matching.some(e => _isForSale(e));
     let toForSale = false;
-    if (matchesExisting && _isSaleable(incomingData)) {
-      const picked = await _promptPile(game.i18n.localize("CRUCIBLE_PARTY_STASH.PileTitle"));
-      if (picked === null) return;
-      toForSale = picked;
+    if (_isSaleable(incomingData)) {
+      if (hasHolding && hasSell) {
+        const picked = await _promptPile(game.i18n.localize("CRUCIBLE_PARTY_STASH.PileTitle"));
+        if (picked === null) return;
+        toForSale = picked;
+      } else if (hasSell && !hasHolding) {
+        toForSale = true;
+      }
     }
 
     // ── Stash mutation under lock ──

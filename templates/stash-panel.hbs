@@ -43,6 +43,13 @@
          aria-label="{{localize "CRUCIBLE_PARTY_STASH.SplitCurrencyTitle"}}">
         <i class="fa-solid fa-coins"></i>
       </button>
+      {{#if hasLastSale}}
+      <button type="button" class="control" data-stash-action="undoSale"
+         data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.UndoSale"}}"
+         aria-label="{{localize "CRUCIBLE_PARTY_STASH.UndoSale"}}">
+        <i class="fa-solid fa-rotate-left"></i>
+      </button>
+      {{/if}}
       {{/if}}
     </div>
     {{/if}}
@@ -66,13 +73,6 @@
             {{#if this.isSellPile}}
               {{#if ../isGM}}
               <span class="stash-sell-controls">
-                {{#if ../hasLastSale}}
-                <button type="button" class="control" data-stash-action="undoSale"
-                   data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.UndoSale"}}"
-                   aria-label="{{localize "CRUCIBLE_PARTY_STASH.UndoSale"}}">
-                  <i class="fa-solid fa-rotate-left"></i>
-                </button>
-                {{/if}}
                 <button type="button" class="control" data-stash-action="sellAll"
                    data-tooltip="{{localize "CRUCIBLE_PARTY_STASH.SellAll"}}"
                    aria-label="{{localize "CRUCIBLE_PARTY_STASH.SellAll"}}">
